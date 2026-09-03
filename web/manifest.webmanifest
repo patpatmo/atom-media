@@ -1,0 +1,27 @@
+{
+  "name": "Atom Media",
+  "short_name": "Atom Media",
+  "description": "轻量级影片信息刮削与分类管理器",
+  "display": "standalone",
+  "start_url": "/",
+  "background_color": "#04060a",
+  "theme_color": "#04060a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

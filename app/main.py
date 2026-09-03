@@ -14,7 +14,7 @@ from flask import (Flask, abort, jsonify, redirect, request, send_file,
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import safe_join
 
-from . import __version__, config, database, scanner, scraper, subtitles
+from . import __version__, config, database, icon, scanner, scraper, subtitles
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,12 +74,50 @@ def index():
     return send_from_directory(WEB_DIR, "index.html")
 
 
+# 现代浏览器使用 SVG；老浏览器 / iOS 使用后端动态生成的 PNG/ICO
 @app.get("/favicon.svg")
 @app.get("/icon.svg")
-@app.get("/favicon.ico")
 def icons():
-    # favicon.ico 也返回 SVG 内容，现代浏览器可正常识别
     return send_from_directory(WEB_DIR, "icon.svg")
+
+
+@app.get("/favicon.ico")
+def favicon_ico():
+    return icon.render_icon_ico(64), 200, {
+        "Content-Type": "image/x-icon",
+        "Cache-Control": "no-cache",
+    }
+
+
+@app.get("/favicon.png")
+def favicon_png():
+    return icon.render_icon_png(32), 200, {
+        "Content-Type": "image/png",
+        "Cache-Control": "no-cache",
+    }
+
+
+@app.get("/apple-touch-icon.png")
+def apple_touch_icon():
+    # 优先使用用户放置的静态 PNG；兼容误命名的 apple-touch-icon.png.png
+    for name in ("apple-touch-icon.png", "apple-touch-icon.png.png"):
+        candidate = os.path.join(WEB_DIR, name)
+        if os.path.isfile(candidate):
+            return send_from_directory(WEB_DIR, name, mimetype="image/png")
+    return icon.render_icon_png(180), 200, {
+        "Content-Type": "image/png",
+        "Cache-Control": "no-cache",
+    }
+
+
+@app.get("/manifest.webmanifest")
+def webmanifest():
+    path = os.path.join(WEB_DIR, "manifest.webmanifest")
+    with open(path, "rb") as f:
+        return f.read(), 200, {
+            "Content-Type": "application/manifest+json",
+            "Cache-Control": "public, max-age=3600",
+        }
 
 
 @app.get("/posters/<path:name>")
