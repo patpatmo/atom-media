@@ -55,6 +55,12 @@ POSTER_DIR = os.path.join(DATA_DIR, "posters")
 PORT = int(os.environ.get("PORT", "8080"))
 WAITRESS_THREADS = int(os.environ.get("WAITRESS_THREADS", "8"))
 
+# ---------- 极简单用户认证 ----------
+AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "").strip()
+AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
+# 建议通过 docker run -e SESSION_SECRET=... 固定；未设置时自动生成并存 SQLite
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "").strip()
+
 # ---------- 刮削（TMDb，免费公开 API）----------
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "").strip()
 # 国内网络不佳时可指向反代地址，例如 https://tmdb.example.com/3

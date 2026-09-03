@@ -238,6 +238,55 @@
 </head>
 <body class="h-screen flex flex-col md:flex-row overflow-hidden select-none">
 
+  <!-- 单用户登录 / 首次注册（黑青毛玻璃风格） -->
+  <div id="auth-screen" class="fixed inset-0 z-[100] bg-[#04060a] flex items-center justify-center p-4">
+    <div class="w-full max-w-sm glass-panel rounded-3xl p-6 md:p-8 border-white/10 space-y-5 relative liquid-border">
+      <div class="text-center space-y-2 pt-2">
+        <div class="mx-auto w-14 h-14 rounded-2xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center shadow-[0_0_20px_rgba(6,182,212,0.35)]">
+          <i data-lucide="atom" class="w-8 h-8 text-cyan-400 animate-spin-slow"></i>
+        </div>
+        <h1 class="text-xl font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white via-cyan-100 to-cyan-400">ATOM MEDIA</h1>
+        <p class="text-[11px] text-cyan-500/70 font-mono tracking-widest">Atom Mini OS</p>
+      </div>
+
+      <!-- 登录表单 -->
+      <div id="auth-login" class="hidden space-y-3">
+        <div>
+          <label class="text-[11px] text-gray-400 block mb-1">用户名</label>
+          <input id="login-username" type="text" autocomplete="username" placeholder="请输入用户名"
+                 class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-cyan-500/50 transition">
+        </div>
+        <div>
+          <label class="text-[11px] text-gray-400 block mb-1">密码</label>
+          <input id="login-password" type="password" autocomplete="current-password" placeholder="请输入密码"
+                 class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-cyan-500/50 transition">
+        </div>
+        <button onclick="login()" class="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold transition shadow-[0_0_20px_rgba(6,182,212,0.3)] active:scale-[0.98]">
+          <i data-lucide="log-in" class="w-4 h-4 inline-block mr-1"></i> 进入 Atom Media
+        </button>
+      </div>
+
+      <!-- 首次注册表单 -->
+      <div id="auth-register" class="hidden space-y-3">
+        <div>
+          <label class="text-[11px] text-gray-400 block mb-1">设置用户名</label>
+          <input id="register-username" type="text" autocomplete="username" placeholder="建议 2~20 个字符"
+                 class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-cyan-500/50 transition">
+        </div>
+        <div>
+          <label class="text-[11px] text-gray-400 block mb-1">设置密码</label>
+          <input id="register-password" type="password" autocomplete="new-password" placeholder="至少 4 个字符"
+                 class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-cyan-500/50 transition">
+        </div>
+        <button onclick="register()" class="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold transition shadow-[0_0_20px_rgba(6,182,212,0.3)] active:scale-[0.98]">
+          <i data-lucide="user-plus" class="w-4 h-4 inline-block mr-1"></i> 创建账号并进入
+        </button>
+      </div>
+
+      <p id="auth-message" class="text-center text-xs text-red-400/90 min-h-[1rem]"></p>
+    </div>
+  </div>
+
   <!-- 移动端底部导航 / 桌面左侧边栏 -->
   <aside class="fixed bottom-0 left-0 right-0 z-30 md:static md:z-auto md:w-64 glass-panel border-t md:border-t-0 border-r-0 md:border-r border-white/10 flex md:flex-col items-center md:items-stretch justify-between p-2 md:p-5 rounded-t-2xl md:rounded-none shrink-0 shadow-[0_-8px_24px_rgba(0,0,0,0.55)] md:shadow-none safe-bottom-pad">
     <div class="flex md:block w-full items-center justify-between gap-1 md:gap-0 md:justify-start">
@@ -266,6 +315,10 @@
           <i data-lucide="sparkles" class="w-5 h-5 md:w-4 md:h-4 text-cyan-400"></i>
           <span>极简刮削中心</span>
         </button>
+          <button onclick="logout()" id="nav-logout" class="nav-btn flex-1 md:w-full md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 px-2 md:px-4 py-2 md:py-3 rounded-xl text-[11px] md:text-sm font-medium border border-transparent text-gray-400 hover:text-white hover:bg-white/5">
+            <i data-lucide="log-out" class="w-5 h-5 md:w-4 md:h-4 text-cyan-400"></i>
+            <span>退出</span>
+          </button>
       </nav>
     </div>
 
@@ -1180,7 +1233,9 @@
       } catch (e) { /* 忽略轮询错误 */ }
     }
 
+      /* ========== 认证初始化 ========== */
     /* ---------- 初始化 ---------- */
+      /*
     window.addEventListener('load', async () => {
       safeCreateIcons();
       await loadStats();
@@ -1194,6 +1249,74 @@
       void 0; // 旧的无条件轮询已停用，系统监控由 startSystemMonitor 统一管理
         }
     });
+      */
+      async function startApp() {
+        safeCreateIcons();
+        await loadStats();
+        await refreshMedia();
+        loadHero();
+        loadUnscraped();
+        loadSettings();
+        if (window.matchMedia && window.matchMedia('(min-width: 768px)').matches) { loadSystem(); startSystemMonitor(); }
+        loadFiles('');
+      }
+
+      async function checkAuth() {
+        try {
+          const s = await api('/api/auth/status');
+          if (s.authenticated) {
+            document.getElementById('auth-screen').classList.add('hidden');
+            await startApp();
+          } else {
+            document.getElementById('auth-login').classList.toggle('hidden', !s.account_exists);
+            document.getElementById('auth-register').classList.toggle('hidden', s.account_exists);
+            safeCreateIcons();
+          }
+        } catch (e) {
+          document.getElementById('auth-message').innerText = '无法连接后端服务：' + e.message;
+          safeCreateIcons();
+        }
+      }
+
+      function showAuthMessage(msg) {
+        document.getElementById('auth-message').innerText = msg || '';
+      }
+
+      async function login() {
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
+        if (!username || !password) { showAuthMessage('请输入用户名和密码'); return; }
+        try {
+          await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+          location.reload();
+        } catch (e) { showAuthMessage(e.message); }
+      }
+
+      async function register() {
+        const username = document.getElementById('register-username').value.trim();
+        const password = document.getElementById('register-password').value;
+        if (!username || !password) { showAuthMessage('请输入用户名和密码'); return; }
+        try {
+          await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) });
+          location.reload();
+        } catch (e) { showAuthMessage(e.message); }
+      }
+
+      async function logout() {
+        try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { /* 忽略 */ }
+        location.reload();
+      }
+
+        // 登录/注册输入框支持回车提交
+        document.getElementById('login-password')?.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); login(); }
+        });
+        document.getElementById('register-password')?.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); register(); }
+        });
+
+      // 进入页面先检查登录状态
+      window.addEventListener('load', checkAuth);
   </script>
 </body>
 </html>

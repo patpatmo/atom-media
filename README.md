@@ -101,10 +101,16 @@ docker run -d --name atom-media \
 | `PRUNE_MISSING` | `true` | 扫描时自动清理文件已不存在的记录 |
 | `WAITRESS_THREADS` | `8` | WSGI 线程数 |
 | `TZ` | - | 时区，建议 `Asia/Shanghai` |
+  | `AUTH_USERNAME` | 空 | 可选。docker run / compose 中预置单用户账号；不填则首次访问网页时注册 |
+  | `AUTH_PASSWORD` | 空 | 可选。与 `AUTH_USERNAME` 成对使用，作为预置密码 |
+  | `SESSION_SECRET` | 自动生成 | 可选。登录会话签名密钥；建议固定以保持重启后登录态 |
 
 > TMDb API Key 免费申请：https://www.themoviedb.org/settings/api （注册后在 API 页面生成 v3 key）
 
+
 ## 4. 使用流程
+
+> **登录/注册**：若启动时设置了 `AUTH_USERNAME` / `AUTH_PASSWORD`，首次打开网页直接登录；若未设置，首次打开会看到“创建账号”页面，注册后即为该服务的唯一账号，后续访问需登录。
 
 1. **文件夹目录** → 点击「扫描入库」：后端递归扫描 `/media` 中所有视频文件（mp4/mkv/avi…），解析文件名（标题 / 年份 / 电影或剧集）写入 SQLite，状态为"待刮削"。
 2. **极简刮削中心** → 「一键批量刮削」或逐个「手动匹配」（弹出候选列表选择）：从 TMDb 拉取标题、海报、简介、导演、演员、年份、评分、类型，写库并生成 NFO。
@@ -119,6 +125,10 @@ docker run -d --name atom-media \
 |---|---|---|
 | GET | `/` | 前端页面（`web/index.html`） |
 | GET | `/api/health` | 健康检查 `{ok, version}` |
+  | GET | `/api/auth/status` | 登录状态/是否存在账号（公开） |
+  | POST | `/api/auth/login` | 登录（公开） |
+  | POST | `/api/auth/register` | 首次注册唯一账号（公开，仅当未配置/未注册时可用） |
+  | POST | `/api/auth/logout` | 退出登录 |
 | GET | `/api/system` | CPU 占用 / 磁盘用量 / 库内统计（状态栏数据源） |
 | GET | `/api/stats` | 影片统计 + 分类标签（含计数） |
 | GET | `/api/media` | 影片列表。参数：`search` `type=movie\|tv` `category=<分类id>` `status` `sort=rating\|year\|title\|added` `limit` |

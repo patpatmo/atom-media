@@ -13,6 +13,10 @@ services:
       - "8080:8080"
     environment:
       TZ: Asia/Shanghai
+        # ---- 单用户认证（可选；不填时首次访问网页注册）----
+        AUTH_USERNAME: ${AUTH_USERNAME:-}
+        AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+        SESSION_SECRET: ${SESSION_SECRET:-}
       # ---- 刮削配置（推荐用 .env 文件或 export 注入）----
       TMDB_API_KEY: ${TMDB_API_KEY:-}
       TMDB_API_BASE: ${TMDB_API_BASE:-https://api.themoviedb.org/3}

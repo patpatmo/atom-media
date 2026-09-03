@@ -10,11 +10,12 @@ import threading
 import time
 
 from flask import (Flask, abort, jsonify, redirect, request, send_file,
-                   send_from_directory)
+                   send_from_directory, session)
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import safe_join
 
-from . import __version__, config, database, icon, scanner, scraper, subtitles
+from . import (__version__, auth, config, database, icon, scanner,
+               scraper, subtitles)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +41,19 @@ for _ext, _mime in {
     ".rmvb": "application/vnd.rn-realmedia-vbr",
 }.items():
     mimetypes.add_type(_mime, _ext)
+
+# 除健康检查和 /api/auth/* 外，所有 API 都要求登录会话
+@app.before_request
+def _require_auth_for_api():
+    if not app.secret_key:
+        app.secret_key = auth.get_or_create_session_secret()
+    if not request.path.startswith("/api/"):
+        return None
+    if request.path == "/api/health" or request.path.startswith("/api/auth/"):
+        return None
+    if not session.get("authenticated"):
+        return jsonify({"error": "未登录或会话已过期"}), 401
+    return None
 
 
 # ---------- 统一错误输出（JSON） ----------
@@ -129,6 +143,48 @@ def posters(name: str):
 @app.get("/api/health")
 def api_health():
     return jsonify({"ok": True, "service": "atom-media", "version": __version__})
+
+
+# ---------- 极简单用户认证 ----------
+@app.get("/api/auth/status")
+def api_auth_status():
+    return jsonify({
+        "authenticated": bool(session.get("authenticated")),
+        "account_exists": auth.account_exists(),
+        "env_configured": bool(auth._env_credentials()[0]),
+    })
+
+
+@app.post("/api/auth/login")
+def api_auth_login():
+    body = request.get_json(silent=True) or {}
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+    if not auth.verify(username, password):
+        return jsonify({"error": "用户名或密码不正确"}), 401
+    session.clear()
+    session["authenticated"] = True
+    session["username"] = username
+    return jsonify({"ok": True})
+
+
+@app.post("/api/auth/register")
+def api_auth_register():
+    body = request.get_json(silent=True) or {}
+    try:
+        username = auth.register(body.get("username"), body.get("password"))
+    except auth.AuthError as e:
+        return jsonify({"error": str(e)}), 409
+    session.clear()
+    session["authenticated"] = True
+    session["username"] = username
+    return jsonify({"ok": True, "username": username})
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 
 def _cpu_percent():
@@ -547,6 +603,7 @@ def main():
     os.makedirs(config.DATA_DIR, exist_ok=True)
     os.makedirs(config.POSTER_DIR, exist_ok=True)
     database.init_db()
+    app.secret_key = auth.get_or_create_session_secret()
     _start_scheduler()
     log.info(
         "Atom Media v%s 启动: http://0.0.0.0:%s | 媒体目录: %s | 数据目录: %s",
