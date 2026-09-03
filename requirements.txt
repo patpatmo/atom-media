@@ -1,0 +1,14 @@
+# 全部锁定经 arm32v7 + Python 3.12 实际验证的兼容版本（含传递依赖，均有 wheel）
+flask==3.0.3
+waitress==3.0.0
+requests==2.32.3
+Werkzeug==3.0.1
+Jinja2==3.1.2
+MarkupSafe==2.1.3
+click==8.1.7
+itsdangerous==2.1.2
+blinker==1.7.0
+charset-normalizer==3.3.2
+idna==3.6
+urllib3==2.2.1
+certifi==2024.2.2

@@ -1,0 +1,27 @@
+services:
+  atom-media:
+    build:
+      context: .
+      # 构建时共享宿主机网络：解决部分设备 DNS 解析失败导致 pip 无法下载依赖
+      network: host
+    image: atom-media:1.0.0
+    container_name: atom-media
+    # 树莓派/玩客云上本机构建与运行时保留此行；如在其他架构主机运行请删除或修改
+    platform: linux/arm/v7
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Asia/Shanghai
+      # ---- 刮削配置（推荐用 .env 文件或 export 注入）----
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      TMDB_API_BASE: ${TMDB_API_BASE:-https://api.themoviedb.org/3}
+      TMDB_LANG: ${TMDB_LANG:-zh-CN}
+      # ---- 行为开关 ----
+      SCAN_INTERVAL_MINUTES: ${SCAN_INTERVAL_MINUTES:-0}   # 定时扫描间隔(分钟)，0=关闭
+      SCRAPE_ON_SCAN: ${SCRAPE_ON_SCAN:-false}             # 入库后立即自动刮削
+      POSTER_CACHE: ${POSTER_CACHE:-false}                 # 海报缓存到 /data/posters
+      NFO_WRITE: ${NFO_WRITE:-true}                        # 生成 Kodi 兼容 NFO
+    volumes:
+      - ./data:/data                # SQLite 数据库 + 海报缓存（务必持久化）
+      - /DATA/Media:/media      # ★ 改成你的影片目录（USB 盘 / Samba / NFS 挂载点）

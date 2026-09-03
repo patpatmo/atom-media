@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#04060a">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Atom Media - 玩客云极简媒体播放器</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* 自定义纯黑与冰核青蓝视觉主题 */
+    :root {
+      --bg-dark: #04060a;
+      --glass-bg: rgba(255, 255, 255, 0.03);
+      --glass-hover: rgba(255, 255, 255, 0.07);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-highlight: linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(255, 255, 255, 0) 60%);
+      --accent-cyan: #06b6d4;
+    }
+
+    /* 解决所有按键点击白框残留 & 移动端/桌面端高亮白框问题 */
+    *, *:focus, *:active, *:focus-visible, button, input, select {
+      outline: none !important;
+      box-shadow: none;
+      -webkit-tap-highlight-color: transparent !important;
+      -webkit-touch-callout: none;
+    }
+
+      /* 移动端 WebApp：屏蔽长按选择/呼出菜单，输入控件允许选择 */
+      *, *::after, *::before {
+        -webkit-tap-highlight-color: transparent !important;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      input[type="text"], input[type="password"], select, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      button, [role="button"] { touch-action: manipulation; }
+
+    body {
+      background-color: var(--bg-dark);
+      color: #f3f4f6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* 极简毛玻璃卡片 */
+    .glass-panel {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      position: relative;
+    }
+
+    .glass-panel-hover {
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+                  background-color 0.3s ease, 
+                  border-color 0.3s ease, 
+                  box-shadow 0.4s ease;
+      position: relative;
+      will-change: transform, opacity;
+    }
+
+    /* 悬浮时边缘渐变微光层 */
+    .glass-panel-hover::after {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.8), rgba(6, 182, 212, 0.1) 50%, rgba(6, 182, 212, 0.6));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .glass-panel-hover:hover::after {
+      opacity: 1;
+    }
+
+    .glass-panel-hover:hover {
+      background: var(--glass-hover);
+      border-color: rgba(6, 182, 212, 0.4);
+      transform: translateY(-6px) scale(1.015);
+      box-shadow: 
+        0 16px 36px rgba(0, 0, 0, 0.8), 
+        0 0 25px rgba(6, 182, 212, 0.35), 
+        inset 0 0 15px rgba(6, 182, 212, 0.15);
+    }
+
+    /* 液态反射边缘微光 */
+    .liquid-border::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      padding: 1px;
+      background: var(--glass-highlight);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    /* ====== 切换过渡动画增强 ====== */
+
+    /* Tab 主内容切入动画 */
+    @keyframes tabEnter {
+      0% {
+        opacity: 0;
+        transform: translateY(16px) scale(0.98);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .tab-content-active {
+      display: block !important;
+      animation: tabEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* 卡片网格交错平滑切入动画 (Staggered Fade In) */
+    @keyframes cardFadeIn {
+      0% {
+        opacity: 0;
+        transform: translateY(18px) scale(0.92);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .grid-item-animate {
+      opacity: 0;
+      animation: cardFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* 侧边栏及分类按钮平滑过渡 */
+    .filter-btn, .nav-btn {
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* ====== Modal 进场与退场动画 ====== */
+    @keyframes modalScaleUp {
+      0% {
+        opacity: 0;
+        transform: scale(0.92) translateY(16px);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    @keyframes modalScaleDown {
+      0% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+      100% {
+        opacity: 0;
+        transform: scale(0.94) translateY(12px);
+      }
+    }
+
+    .modal-enter-content {
+      animation: modalScaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .modal-exit-content {
+      animation: modalScaleDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .modal-backdrop-exit {
+      opacity: 0 !important;
+      transition: opacity 0.25s ease-out;
+    }
+
+    /* 极简滚动条 */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.3);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(6, 182, 212, 0.25);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(6, 182, 212, 0.5);
+    }
+
+    /* 脉冲渐变动画 */
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+    .glow-effect {
+      animation: pulseGlow 4s infinite ease-in-out;
+    }
+
+    @keyframes spinSlow { to { transform: rotate(360deg); } }
+    .animate-spin-slow { animation: spinSlow 8s linear infinite; }
+
+      /* 手机底部导航安全区；桌面端恢复与 md:p-5 一致的底部内边距 */
+      .safe-bottom-pad {
+        padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)) !important;
+      }
+      @media (min-width: 768px) {
+        .safe-bottom-pad {
+          padding-bottom: 1.25rem !important;
+        }
+      }
+  </style>
+</head>
+<body class="h-screen flex flex-col md:flex-row overflow-hidden select-none">
+
+  <!-- 移动端底部导航 / 桌面左侧边栏 -->
+  <aside class="fixed bottom-0 left-0 right-0 z-30 md:static md:z-auto md:w-64 glass-panel border-t md:border-t-0 border-r-0 md:border-r border-white/10 flex md:flex-col items-center md:items-stretch justify-between p-2 md:p-5 rounded-t-2xl md:rounded-none shrink-0 shadow-[0_-8px_24px_rgba(0,0,0,0.55)] md:shadow-none safe-bottom-pad">
+    <div class="flex md:block w-full items-center justify-between gap-1 md:gap-0 md:justify-start">
+      <!-- 品牌 Logo（手机端隐藏，桌面端显示） -->
+      <div class="hidden md:flex items-center gap-3 px-2 py-3 mb-6">
+        <div class="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center shadow-[0_0_20px_rgba(6,182,212,0.3)]">
+          <i data-lucide="atom" class="w-6 h-6 text-cyan-400 animate-spin-slow"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white via-cyan-100 to-cyan-400">ATOM MEDIA</h1>
+          <p class="text-[10px] text-cyan-500/80 tracking-widest uppercase font-mono">Atom Mini OS</p>
+        </div>
+      </div>
+
+      <!-- 导航菜单：手机端横向底部按钮，桌面端纵向侧栏 -->
+      <nav class="flex md:flex-col md:space-y-1.5 items-stretch w-full md:w-auto flex-1 md:flex-none">
+        <button onclick="switchTab('library')" id="nav-library" class="nav-btn flex-1 md:w-full md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 px-2 md:px-4 py-2 md:py-3 rounded-xl text-[11px] md:text-sm font-medium border border-cyan-500/30 bg-cyan-500/15 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+          <i data-lucide="film" class="w-5 h-5 md:w-4 md:h-4 text-cyan-400"></i>
+          <span>影视库</span>
+        </button>
+        <button onclick="switchTab('folders')" id="nav-folders" class="nav-btn flex-1 md:w-full md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 px-2 md:px-4 py-2 md:py-3 rounded-xl text-[11px] md:text-sm font-medium border border-transparent text-gray-400 hover:text-white hover:bg-white/5">
+          <i data-lucide="folder-tree" class="w-5 h-5 md:w-4 md:h-4 text-cyan-400"></i>
+          <span>文件夹目录</span>
+        </button>
+        <button onclick="switchTab('scraper')" id="nav-scraper" class="nav-btn flex-1 md:w-full md:flex-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 px-2 md:px-4 py-2 md:py-3 rounded-xl text-[11px] md:text-sm font-medium border border-transparent text-gray-400 hover:text-white hover:bg-white/5">
+          <i data-lucide="sparkles" class="w-5 h-5 md:w-4 md:h-4 text-cyan-400"></i>
+          <span>极简刮削中心</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- 硬件轻量状态栏（手机端隐藏，桌面端显示） -->
+    <div class="hidden md:block glass-panel rounded-xl p-3.5 mt-4 border-white/5 bg-black/60">
+      <div class="flex items-center justify-between text-xs text-gray-400 mb-2">
+        <span class="flex items-center gap-1.5"><i data-lucide="cpu" class="w-3.5 h-3.5 text-cyan-400"></i> CPU 负载</span>
+        <span class="font-mono text-cyan-300" id="cpu-usage">--</span>
+      </div>
+      <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-3">
+        <div id="cpu-bar" class="h-full bg-cyan-500 rounded-full w-0 transition-all duration-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]"></div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs text-gray-400 mb-2">
+        <span class="flex items-center gap-1.5"><i data-lucide="hard-drive" class="w-3.5 h-3.5 text-cyan-400"></i> 存储挂载盘</span>
+        <span class="font-mono text-gray-300" id="disk-usage">-- / --</span>
+      </div>
+      <div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+        <div id="disk-bar" class="h-full bg-cyan-500 rounded-full w-0 transition-all duration-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]"></div>
+      </div>
+      <p class="text-[10px] text-gray-600 font-mono mt-2 truncate" id="disk-path"></p>
+    </div>
+  </aside>
+
+  <!-- 主界面区域 -->
+  <main id="main-container" class="flex-1 overflow-y-auto p-4 md:p-8 pb-[88px] md:pb-8 space-y-8 relative">
+    
+    <!-- 1. 影视库 Tab -->
+    <section id="tab-library" class="tab-content tab-content-active space-y-8">
+      <!-- 焦点电影 Header / Hero Banner（数据来自后端，评分最高影片） -->
+      <div class="hero-banner relative rounded-3xl overflow-hidden glass-panel border-white/10 h-[260px] md:h-[360px] flex items-end p-4 md:p-10 liquid-border">
+        <!-- 背景海报（动态：焦点影片 backdrop） -->
+        <div id="hero-bg" class="absolute inset-0 bg-cover bg-center opacity-30" style="background-image: url('https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=1200')"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-[#04060a] via-[#04060a]/70 to-transparent"></div>
+
+        <div class="relative z-10 max-w-2xl space-y-3">
+          <div id="hero-badge" class="inline-flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3 py-0.5 md:py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[10px] md:text-xs font-semibold backdrop-blur-md">
+            <i data-lucide="star" class="w-3.5 h-3.5 fill-cyan-400 text-cyan-400"></i> 影片库加载中...
+          </div>
+          <h2 id="hero-title" class="text-3xl md:text-5xl font-extrabold text-white tracking-tight">ATOM MEDIA</h2>
+          <p id="hero-overview" class="text-xs md:text-sm text-gray-300 line-clamp-2 font-normal leading-relaxed">
+            正在连接后端服务，加载你的影片库...
+          </p>
+          <div class="flex items-center gap-4 pt-2">
+            <button id="hero-play" style="display:none" class="items-center gap-2 px-3 md:px-6 py-2 md:py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs md:text-sm font-semibold transition-all shadow-[0_0_25px_rgba(6,182,212,0.5)] hover:shadow-[0_0_35px_rgba(6,182,212,0.8)] active:scale-95">
+              <i data-lucide="play" class="w-4 h-4 fill-white"></i> 立即播放
+            </button>
+            <button id="hero-detail" style="display:none" class="items-center gap-2 px-3 md:px-5 py-2 md:py-3 rounded-xl glass-panel hover:bg-white/10 text-gray-200 text-xs md:text-sm font-medium border-white/10 transition-all">
+              <i data-lucide="info" class="w-4 h-4 text-cyan-400"></i> 详情信息
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快捷检索分类栏（分类标签由后端动态生成，支持自定义） -->
+      <div class="flex items-center justify-between border-b border-white/5 pb-4 flex-wrap gap-4">
+        <div class="flex items-center gap-2 flex-wrap" id="filter-chips">
+          <button class="px-4 py-1.5 rounded-xl text-xs font-medium text-gray-500 border border-transparent">加载中...</button>
+        </div>
+        <!-- 搜索框 + 手动添加 -->
+        <div class="flex items-center gap-3">
+          <button id="btn-add-media" class="px-3 py-1.5 rounded-xl text-xs font-medium text-cyan-300 border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 transition flex items-center gap-1.5 shrink-0">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i> 添加影片
+          </button>
+          <div class="relative w-full sm:w-64">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-gray-500"></i>
+            <input type="text" id="search-input" oninput="handleSearch()" placeholder="快速搜索影视标题..." class="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-1.5 text-xs text-white placeholder-gray-500 focus:border-cyan-500/50 transition">
+          </div>
+        </div>
+      </div>
+
+      <!-- 媒体海报网格 -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-5 min-h-[300px] transition-opacity duration-300" id="media-grid">
+        <!-- 数据来自 /api/media，通过 JS 动态渲染 -->
+      </div>
+    </section>
+
+    <!-- 2. 文件夹目录 Tab（真实目录浏览 + 入库） -->
+    <section id="tab-folders" class="tab-content hidden space-y-6">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            <i data-lucide="hard-drive" class="w-5 h-5 text-cyan-400"></i>
+            本地挂载目录 (Direct Storage)
+          </h2>
+          <p class="text-xs text-gray-400 mt-1">直接读取 USB / Samba / NFS 路径，超低 CPU 资源开销</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs bg-cyan-950/40 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-cyan-300 font-mono truncate max-w-[260px]" id="current-path">加载中...</span>
+          <button id="btn-refresh-files" class="px-3 py-1.5 rounded-xl text-xs text-gray-300 border border-white/10 hover:bg-white/10 transition flex items-center gap-1.5">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> 刷新
+          </button>
+          <button id="btn-scan" class="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium transition flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+            <i data-lucide="folder-plus" class="w-3.5 h-3.5"></i> 扫描入库
+          </button>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-2xl border-white/10 divide-y divide-white/5 overflow-hidden" id="file-list">
+        <div class="p-6 text-center text-xs text-gray-500">加载目录中...</div>
+      </div>
+    </section>
+
+    <!-- 3. 极简刮削中心 Tab -->
+    <section id="tab-scraper" class="tab-content hidden space-y-6">
+      <div>
+        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+          <i data-lucide="sparkles" class="w-5 h-5 text-cyan-400"></i>
+          轻量元数据刮削器 (TMDb Light)
+        </h2>
+        <p class="text-xs text-gray-400 mt-1">自动识别视频文件名并写库 / 生成 NFO 与海报缓存，完美匹配玩客云弱算力环境</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- 未刮削列表 -->
+        <div class="md:col-span-2 glass-panel rounded-2xl p-5 border-white/10 space-y-4">
+          <div class="flex justify-between items-center pb-2 border-b border-white/5">
+            <span class="text-sm font-semibold text-gray-200" id="unscraped-count">待刮削文件 (0)</span>
+            <button id="batch-btn" onclick="startBatchScrape()" class="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium transition flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i> 一键批量刮削
+            </button>
+          </div>
+
+          <div class="space-y-3" id="unscraped-list">
+            <div class="p-4 text-center text-xs text-gray-500">加载中...</div>
+          </div>
+        </div>
+
+        <!-- 刮削引擎配置面板 -->
+        <div class="glass-panel rounded-2xl p-5 border-white/10 space-y-4 h-fit">
+          <h3 class="text-sm font-semibold text-gray-200 border-b border-white/5 pb-2">刮削源参数</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="text-[11px] text-gray-400 block mb-1">数据库 Api Provider</label>
+              <select id="scrape-provider" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500/50">
+                <option value="tmdb">TheMovieDB (TMDb)</option>
+                <option value="douban" disabled title="豆瓣无公开 API，为规避法律风险未集成">豆瓣 Adapter (未集成)</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[11px] text-gray-400 block mb-1">TMDb API Key (v3 auth)</label>
+              <div class="flex gap-2">
+                <input id="tmdb-key" type="password" placeholder="粘贴 TMDb API Key" class="flex-1 min-w-0 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 transition">
+                <button id="btn-save-key" class="px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs transition shrink-0">保存</button>
+              </div>
+            </div>
+            <div>
+              <label class="text-[11px] text-gray-400 block mb-1">海报存储策略</label>
+              <select id="poster-mode" class="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-cyan-500/50">
+                <option value="cdn">直接使用在线 CDN (零硬盘占用)</option>
+                <option value="local">本地缓存镜像 (/data/posters)</option>
+              </select>
+            </div>
+            <p class="text-[10px] text-gray-500 leading-relaxed">扫描入库 / 定时刮削由后端完成；NFO 与海报缓存写入 /data。环境变量配置的 Key 优先于本面板。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 1. 全屏视频播放 Modal（支持进场与平滑淡出退场动效） -->
+  <div id="player-modal" onclick="closePlayer()" class="fixed inset-0 z-[60] bg-black/95 hidden backdrop-blur-2xl flex flex-col justify-between p-0 pb-[env(safe-area-inset-bottom)] md:p-6 transition-opacity duration-300 cursor-pointer">
+    <!-- 顶栏控制条 -->
+    <div class="flex items-center justify-between relative z-10 px-3 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 md:px-0 md:pt-0 md:pb-0" onclick="event.stopPropagation()">
+      <div class="flex items-center gap-3">
+        <button onclick="closePlayer()" class="p-2.5 rounded-full glass-panel hover:bg-white/20 text-white transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+        <span id="player-title" class="text-base font-semibold text-white">正在播放</span>
+      </div>
+      <div class="flex items-center gap-3 text-xs text-gray-400 font-mono">
+        <span class="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">HTML5 Native Direct Play</span>
+      </div>
+    </div>
+
+    <!-- 视频播放画框 -->
+    <div id="player-modal-container" onclick="event.stopPropagation()" class="relative flex-1 min-h-0 w-full overflow-hidden glass-panel border-0 md:border md:border-white/10 md:flex-none md:aspect-video md:max-w-5xl md:mx-auto md:rounded-2xl md:shadow-2xl md:my-auto cursor-default">
+      <video id="main-video" class="w-full h-full object-contain" controls></video>
+    </div>
+
+    <div class="hidden md:block text-center text-xs text-gray-500 font-mono" onclick="event.stopPropagation()">
+      Atom Media • 原生流式直通（点击空白处可退出）
+    </div>
+  </div>
+
+  <!-- 2. 电影详情 Modal（含分类标签管理 / 重新刮削 / 删除） -->
+  <div id="detail-modal" onclick="closeDetailModal()" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4 transition-opacity duration-300 cursor-pointer">
+    <div id="detail-modal-container" onclick="event.stopPropagation()" class="glass-panel w-full max-w-lg rounded-3xl p-6 border-white/15 space-y-4 relative liquid-border cursor-default">
+      <button onclick="closeDetailModal()" class="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="space-y-1">
+        <span class="text-[10px] uppercase font-mono tracking-widest text-cyan-400">Movie Details</span>
+        <h3 id="modal-title" class="text-2xl font-bold text-white">电影标题</h3>
+      </div>
+
+      <div class="flex items-center gap-3 text-xs text-gray-400">
+        <span id="modal-year" class="px-2 py-0.5 rounded bg-white/10 font-mono">2024</span>
+        <span id="modal-rating" class="text-amber-400 font-bold flex items-center gap-1">★ 9.0</span>
+        <span id="modal-status" class="px-2 py-0.5 rounded bg-white/5 border border-white/10 font-mono text-[10px] text-gray-400"></span>
+      </div>
+
+      <div class="space-y-2 text-xs text-gray-300">
+        <p><strong>类型：</strong><span id="modal-genres" class="text-gray-400"></span></p>
+        <p><strong>导演：</strong><span id="modal-director" class="text-gray-400"></span></p>
+        <p><strong>主演：</strong><span id="modal-cast" class="text-gray-400"></span></p>
+        <p class="leading-relaxed text-gray-400 pt-1 border-t border-white/5" id="modal-overview"></p>
+      </div>
+
+      <div class="space-y-2">
+        <span class="text-[10px] text-gray-500 uppercase font-mono tracking-widest">分类标签（点击切换）</span>
+        <div class="flex flex-wrap gap-2" id="modal-cats"></div>
+      </div>
+
+      <div class="flex items-center justify-between pt-2 border-t border-white/5">
+        <span id="modal-file" class="text-[10px] font-mono text-gray-600 truncate max-w-[240px]"></span>
+        <div class="flex gap-2 shrink-0">
+          <button id="modal-rescrape" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-cyan-500/30 hover:text-cyan-300 text-xs text-gray-200 transition">重新刮削</button>
+          <button id="modal-delete" class="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/30 text-xs text-red-300 border border-red-500/20 transition">删除记录</button>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2">
+        <button id="modal-play" class="items-center gap-1.5 px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs text-white transition" style="display:none">
+          <i data-lucide="play" class="w-3.5 h-3.5"></i> 播放
+        </button>
+        <button onclick="closeDetailModal()" class="px-5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs text-gray-200 transition">关闭窗口</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =====================================================
+     * Atom Media 前端逻辑（对接后端 REST API）
+     * 数据源: /api/*   视觉: 原版 atom_media.html 设计保留
+     * ===================================================== */
+
+    const $ = (sel) => document.querySelector(sel);
+
+    const state = {
+      filter: 'all',        // all | movie | tv | cat:<id>
+      search: '',
+      media: [],            // 当前网格数据
+      stats: null,          // /api/stats
+      hero: null,           // 焦点影片
+      currentDetail: null,  // 详情弹窗条目
+      filesPath: '',        // 文件夹目录当前路径
+      mediaDir: '',         // 后端配置的 MEDIA_DIR（用于路径显示）
+      unscraped: [],        // 待刮削列表
+    };
+
+    /* ---------- 工具 ---------- */
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function fmtSize(n) {
+      if (n === null || n === undefined || isNaN(n) || n <= 0) return '—';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let i = 0, v = n;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+    }
+
+    async function api(url, opts = {}) {
+      const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+      let data = null;
+      try { data = await r.json(); } catch (e) { /* 非 JSON 响应 */ }
+      if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
+      return data;
+    }
+
+    function safeCreateIcons() {
+      try {
+        if (window.lucide && typeof lucide.createIcons === 'function') {
+          lucide.createIcons();
+        }
+      } catch (e) {
+        console.warn('Lucide icons optional load skipped:', e);
+      }
+    }
+
+    /* ---------- Tab 侧边栏切换（原版保留） ---------- */
+    function switchTab(tabName) {
+      if (document.activeElement) document.activeElement.blur();
+
+      document.querySelectorAll('.tab-content').forEach(el => {
+        el.classList.add('hidden');
+        el.classList.remove('tab-content-active');
+      });
+
+      document.querySelectorAll('.nav-btn').forEach(el => {
+        el.classList.remove('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/30', 'shadow-[0_0_15px_rgba(6,182,212,0.15)]');
+        el.classList.add('border-transparent', 'text-gray-400');
+      });
+
+      const targetTab = document.getElementById(`tab-${tabName}`);
+      if (targetTab) {
+        targetTab.classList.remove('hidden');
+        void targetTab.offsetWidth;
+        targetTab.classList.add('tab-content-active');
+      }
+
+      const activeNav = document.getElementById(`nav-${tabName}`);
+      if (activeNav) {
+        activeNav.classList.add('bg-cyan-500/15', 'text-cyan-300', 'border-cyan-500/30', 'shadow-[0_0_15px_rgba(6,182,212,0.15)]');
+        activeNav.classList.remove('border-transparent', 'text-gray-400');
+      }
+
+        // 切换 Tab 后，滚动容器回到顶部（手机端底部导航触发时需要）
+        const mainEl = document.getElementById('main-container');
+        if (mainEl) mainEl.scrollTop = 0;
+    }
+
+    /* ---------- 影视库：网格渲染 ---------- */
+    function renderGrid(items = state.media) {
+      const grid = document.getElementById('media-grid');
+      if (!grid) return;
+
+      grid.style.opacity = '0.3';
+
+      setTimeout(() => {
+        if (items.length === 0) {
+          grid.innerHTML = `<div class="col-span-full py-16 text-center text-gray-500 text-xs tracking-wider">
+            ${state.search ? '未搜索到匹配的影视资源' : '影片库还是空的 — 前往「文件夹目录」扫描入库，或点击「＋ 添加影片」'}
+          </div>`;
+        } else {
+          grid.innerHTML = items.map((item, index) => `
+            <div class="glass-panel glass-panel-hover rounded-2xl overflow-hidden group cursor-pointer border-white/10 flex flex-col grid-item-animate" style="animation-delay: ${index * 0.06}s;" data-id="${item.id}">
+              <div class="relative aspect-[2/3] overflow-hidden bg-black/40">
+                <img src="${esc(item.cover) || 'https://placehold.co/400x600/0f172a/06b6d4?text=ATOM+MEDIA'}" alt="${esc(item.title)}" onerror="this.src='https://placehold.co/400x600/0f172a/06b6d4?text=ATOM+MEDIA'" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition duration-300 flex items-center justify-center">
+                  <div class="w-11 h-11 rounded-full bg-cyan-500/90 text-white flex items-center justify-center shadow-[0_0_20px_rgba(6,182,212,0.8)] transform group-hover:scale-110 transition">
+                    <i data-lucide="play" class="w-5 h-5 fill-white ml-0.5">▶</i>
+                  </div>
+                </div>
+                <span class="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md border border-white/10 text-[10px] font-mono text-cyan-300">
+                  ${item.rating !== null && item.rating !== '' && item.rating !== undefined ? '★ ' + item.rating : '待刮削'}
+                </span>
+                <button data-act="detail" title="详情 / 分类" class="absolute top-2 left-2 w-7 h-7 rounded-lg bg-black/70 backdrop-blur-md border border-white/10 text-cyan-300 flex items-center justify-center opacity-100 md:opacity-0 group-hover:opacity-100 md:group-hover:opacity-100 hover:bg-cyan-500/30 transition">
+                  <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+              <div class="p-3 flex-1 flex flex-col justify-between bg-black/30">
+                <div>
+                  <h3 class="text-xs font-semibold text-gray-100 truncate group-hover:text-cyan-300 transition">${esc(item.title)}</h3>
+                  <p class="text-[10px] text-gray-500 mt-1 font-mono">${esc(item.year) || '----'} • ${item.type === 'tv' ? '剧集' : '电影'}${item.status === 'failed' ? ' • 刮削失败' : ''}</p>
+                </div>
+                ${(item.categories && item.categories.length) ? `<div class="flex flex-wrap gap-1 mt-2">${item.categories.map(c => `<span class="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[9px] text-cyan-300">${esc(c)}</span>`).join('')}</div>` : ''}
+              </div>
+            </div>
+          `).join('');
+        }
+
+        grid.style.opacity = '1';
+        safeCreateIcons();
+      }, 150);
+    }
+
+    async function playItem(item) {
+      if (!item) return;
+      if (item.url) {
+        let subs = [];
+        try {
+          const r = await api(`/api/media/${item.id}/subtitles`);
+          subs = r.subtitles || [];
+        } catch (e) { /* 无字幕接口或读取失败时静默忽略 */ }
+        playMedia(item.title, item.url, subs);
+      } else if (item.id) {
+        openDetail(item.id);
+      }
+    }
+
+    // 网格事件委托：点卡片播放，点 ⓘ 打开详情
+    document.getElementById('media-grid').addEventListener('click', (e) => {
+      const card = e.target.closest('[data-id]');
+      if (!card) return;
+      const item = state.media.find(m => m.id === parseInt(card.dataset.id));
+      if (!item) return;
+      if (e.target.closest('[data-act="detail"]')) { openDetail(item.id); return; }
+      playItem(item);
+    });
+
+    /* ---------- 影视库：筛选分类（含自定义标签） ---------- */
+    async function loadStats() {
+      try {
+        state.stats = await api('/api/stats');
+        renderFilters();
+      } catch (e) { console.warn(e); }
+    }
+
+    function renderFilters() {
+      const s = state.stats || {};
+      const cats = s.categories || [];
+      const chips = [
+        { key: 'all', label: `全部 (${s.total ?? 0})` },
+        { key: 'movie', label: `电影 (${s.movie ?? 0})` },
+        { key: 'tv', label: `剧集 (${s.tv ?? 0})` },
+        ...cats.map(c => ({ key: 'cat:' + c.id, label: `${c.name} (${c.count})`, cid: c.id })),
+      ];
+      $('#filter-chips').innerHTML = chips.map(c => `
+        <button data-filter="${c.key}" class="filter-btn px-4 py-1.5 rounded-xl text-xs font-medium border ${state.filter === c.key
+          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+          : 'text-gray-400 hover:text-white border-transparent'}">${esc(c.label)}${c.cid ? `<span data-delcat="${c.cid}" class="ml-1 opacity-50 hover:opacity-100 hover:text-red-400" title="删除此标签">×</span>` : ''}</button>
+      `).join('') + `<button id="btn-add-cat" class="px-3 py-1.5 rounded-xl text-xs font-medium border border-dashed border-white/20 text-gray-500 hover:text-cyan-300 hover:border-cyan-500/40 transition">＋ 标签</button>`;
+    }
+
+    $('#filter-chips').addEventListener('click', async (e) => {
+      const del = e.target.closest('[data-delcat]');
+      if (del) {
+        e.stopPropagation();
+        if (!confirm('删除该分类标签？\n（影片记录不会被删除）')) return;
+        try {
+          await api('/api/categories/' + del.dataset.delcat, { method: 'DELETE' });
+          if (state.filter === 'cat:' + del.dataset.delcat) state.filter = 'all';
+          await refreshAll();
+        } catch (err) { alert(err.message); }
+        return;
+      }
+      if (e.target.closest('#btn-add-cat')) {
+        const name = prompt('输入新的分类标签名称（如：已看 / 想看 / 收藏）：');
+        if (name && name.trim()) {
+          try {
+            await api('/api/categories', { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
+            await refreshAll();
+          } catch (err) { alert(err.message); }
+        }
+        return;
+      }
+      const btn = e.target.closest('[data-filter]');
+      if (!btn || btn.dataset.filter === state.filter) return;
+      if (document.activeElement) document.activeElement.blur();
+      state.filter = btn.dataset.filter;
+      refreshMedia();
+    });
+
+    /* ---------- 影视库：搜索 / 数据加载 ---------- */
+    let searchTimer = null;
+    function handleSearch() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        state.search = (document.getElementById('search-input').value || '').trim();
+        refreshMedia();
+      }, 300);
+    }
+
+    async function refreshMedia() {
+      try {
+        const p = new URLSearchParams();
+        if (state.search) p.set('search', state.search);
+        if (state.filter === 'movie' || state.filter === 'tv') p.set('type', state.filter);
+        if (state.filter.startsWith('cat:')) p.set('category', state.filter.slice(4));
+        const d = await api('/api/media?' + p.toString());
+        state.media = d.items;
+        renderGrid(state.media);
+      } catch (e) {
+        console.warn(e);
+        document.getElementById('media-grid').innerHTML =
+          `<div class="col-span-full py-16 text-center text-red-400/70 text-xs">后端连接失败：${esc(e.message)}</div>`;
+      }
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadStats(), refreshMedia(), loadUnscraped(), loadHero()]);
+    }
+
+    $('#btn-add-media').addEventListener('click', async () => {
+      const title = prompt('输入影片名称（保存后将自动到 TMDb 刮削）：');
+      if (!title || !title.trim()) return;
+      try {
+        const d = await api('/api/media', { method: 'POST', body: JSON.stringify({ title: title.trim(), scrape: true }) });
+        if (d.warning) alert('已入库，但自动刮削失败：\n' + d.warning);
+        await refreshAll();
+      } catch (e) { alert('添加失败：' + e.message); }
+    });
+
+    /* ---------- 焦点 Hero Banner ---------- */
+    async function loadHero() {
+      try {
+        const d = await api('/api/media?sort=rating&limit=1');
+        const item = d.items[0];
+        if (!item) {
+          $('#hero-badge').innerHTML = '<i data-lucide="sparkles" class="w-3.5 h-3.5"></i> 影片库为空';
+          $('#hero-title').textContent = 'ATOM MEDIA';
+          $('#hero-overview').textContent = '扫描媒体目录或手动添加影片后，这里将展示评分最高的作品。';
+          $('#hero-play').style.display = 'none';
+          $('#hero-detail').style.display = 'none';
+          safeCreateIcons();
+          return;
+        }
+        state.hero = item;
+        $('#hero-badge').innerHTML = `<i data-lucide="star" class="w-3.5 h-3.5 fill-cyan-400 text-cyan-400"></i> ${item.rating ? 'TMDb ' + item.rating : '未评分'} • ${item.type === 'tv' ? '剧集' : '电影'}${item.year ? ' • ' + esc(item.year) : ''}`;
+        $('#hero-title').textContent = item.title + (item.year ? ` (${item.year})` : '');
+        $('#hero-overview').textContent = item.overview || '暂无简介，可在详情中重新刮削。';
+        if (item.backdrop || item.cover) {
+          $('#hero-bg').style.backgroundImage = `url('${esc(item.backdrop || item.cover)}')`;
+        }
+        const hp = $('#hero-play'), hd = $('#hero-detail');
+        hp.style.display = item.url ? 'inline-flex' : 'none';
+        hd.style.display = 'inline-flex';
+        hp.onclick = () => playItem(item);
+        hd.onclick = () => openDetail(item.id);
+        safeCreateIcons();
+      } catch (e) { console.warn(e); }
+    }
+
+    /* ---------- 文件夹目录 ---------- */
+    function folderRow(icon, name, path, isUp = false) {
+      return `<div data-open="${esc(path)}" class="p-4 hover:bg-white/5 transition flex items-center justify-between cursor-pointer group">
+        <div class="flex items-center gap-3 pl-2 min-w-0">
+          <i data-lucide="${icon}" class="w-5 h-5 text-cyan-400 ${icon === 'folder' ? 'fill-cyan-400/20' : ''} group-hover:fill-cyan-400/40 transition shrink-0"></i>
+          <p class="text-sm font-medium text-gray-200 group-hover:text-cyan-300 transition truncate">${esc(name)}${isUp ? ' <span class="text-[10px] text-gray-500">(返回上级)</span>' : ''}</p>
+        </div>
+        <i data-lucide="chevron-right" class="w-4 h-4 text-gray-500 group-hover:text-cyan-400 transition shrink-0"></i>
+      </div>`;
+    }
+
+    function videoRow(en) {
+      const size = en.size ? fmtSize(en.size) : '';
+      const actions = en.media_id
+        ? `<button data-detail="${en.media_id}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-cyan-500/30 hover:text-cyan-300 text-xs text-gray-200 border border-white/10 transition">详情</button>
+           <button data-play="${en.media_id}" class="px-3 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs hover:bg-cyan-500/40 transition">直接播放</button>`
+        : `<button data-add="${esc(en.path)}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-cyan-500/30 hover:text-cyan-300 text-xs text-gray-200 border border-white/10 transition">入库</button>`;
+      return `<div class="p-4 hover:bg-white/5 transition flex items-center justify-between bg-white/[0.01] group">
+        <div class="flex items-center gap-3 pl-2 min-w-0">
+          <i data-lucide="file-video" class="w-5 h-5 text-cyan-400 group-hover:text-cyan-300 transition shrink-0"></i>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-300 group-hover:text-cyan-300 transition truncate">${esc(en.name)}</p>
+            <p class="text-[11px] text-gray-500">${size ? size + ' • ' : ''}${esc((en.ext || '').slice(1).toUpperCase())}${en.media_id ? ' • 已入库' : ''}</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">${actions}</div>
+      </div>`;
+    }
+
+    async function loadFiles(path = '') {
+      state.filesPath = path;
+      try {
+        const d = await api('/api/files?path=' + encodeURIComponent(path));
+        if (d.media_dir) state.mediaDir = d.media_dir;
+        const rootDir = (state.mediaDir || ('/' + d.root)).replace(/\/+$/, '') || '/';
+        $('#current-path').textContent = rootDir + (d.path ? '/' + d.path : '');
+        const rows = [];
+        if (d.parent !== null && d.parent !== undefined) rows.push(folderRow('arrow-up-circle', '..', d.parent, true));
+        for (const en of d.entries) if (en.is_dir) rows.push(folderRow('folder', en.name, en.path));
+        for (const en of d.entries) if (!en.is_dir && en.is_video) rows.push(videoRow(en));
+        $('#file-list').innerHTML = rows.length ? rows.join('') :
+          '<div class="p-6 text-xs text-gray-500 text-center">此目录为空或没有视频文件</div>';
+        safeCreateIcons();
+      } catch (e) {
+        $('#file-list').innerHTML = `<div class="p-6 text-xs text-red-400/70 text-center">无法读取目录：${esc(e.message)}</div>`;
+      }
+    }
+
+    $('#file-list').addEventListener('click', async (e) => {
+      const open = e.target.closest('[data-open]');
+      if (open) { loadFiles(open.dataset.open); return; }
+
+      const play = e.target.closest('[data-play]');
+      if (play) {
+        try { const d = await api('/api/media/' + play.dataset.play); playItem(d); }
+        catch (err) { alert(err.message); }
+        return;
+      }
+
+      const det = e.target.closest('[data-detail]');
+      if (det) { openDetail(parseInt(det.dataset.detail)); return; }
+
+      const add = e.target.closest('[data-add]');
+      if (add) {
+        add.disabled = true; add.textContent = '入库中...';
+        try {
+          await api('/api/media', { method: 'POST', body: JSON.stringify({ path: add.dataset.add }) });
+          await Promise.all([loadStats(), loadUnscraped(), loadHero()]);
+          loadFiles(state.filesPath);
+        } catch (err) {
+          alert('入库失败：' + err.message);
+          add.disabled = false; add.textContent = '入库';
+        }
+      }
+    });
+
+    $('#btn-refresh-files').addEventListener('click', () => loadFiles(state.filesPath));
+
+    $('#btn-scan').addEventListener('click', async function () {
+      const btn = this;
+      btn.disabled = true;
+      const old = btn.innerHTML;
+      btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> 扫描中...';
+      safeCreateIcons();
+      try {
+        const r = await api('/api/scan', { method: 'POST' });
+        if (r.error) {
+          alert('扫描失败：' + r.error);
+        } else {
+          alert(`扫描完成：发现 ${r.found} 个视频，新入库 ${r.added} 个` +
+            (r.pruned ? `，清理失效记录 ${r.pruned} 条` : ''));
+        }
+        await refreshAll();
+        loadFiles(state.filesPath);
+      } catch (e) { alert('扫描失败：' + e.message); }
+      btn.disabled = false; btn.innerHTML = old; safeCreateIcons();
+    });
+
+    /* ---------- 刮削中心 ---------- */
+    async function loadUnscraped() {
+      try {
+        const d = await api('/api/scraper/unscraped');
+        state.unscraped = d.items;
+        $('#unscraped-count').textContent = `待刮削文件 (${d.items.length})`;
+        if (!d.items.length) {
+          $('#unscraped-list').innerHTML = '<div class="p-6 text-center text-xs text-gray-500">太棒了，没有待刮削的文件。扫描新目录后会出现在这里。</div>';
+          return;
+        }
+        $('#unscraped-list').innerHTML = d.items.map(it => `
+          <div class="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 gap-3" data-row="${it.id}">
+            <div class="flex items-center gap-3 min-w-0">
+              <i data-lucide="file-text" class="w-4 h-4 text-cyan-400 shrink-0"></i>
+              <div class="min-w-0">
+                <span class="text-xs font-mono text-gray-300 block truncate">${esc(it.title)}${it.year ? ' (' + esc(it.year) + ')' : ''}</span>
+                ${it.file_name ? `<span class="text-[10px] text-gray-600 font-mono truncate block">${esc(it.file_name)}</span>` : ''}
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              ${it.status === 'failed' ? '<span class="text-[10px] text-red-400 font-mono">上次失败</span>' : ''}
+              <button data-match="${it.id}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-cyan-500/30 hover:text-cyan-300 text-xs text-gray-200 border border-white/10 transition">手动匹配</button>
+            </div>
+          </div>`).join('');
+        safeCreateIcons();
+      } catch (e) { console.warn(e); }
+    }
+
+    async function matchOne(id) {
+      let it = state.unscraped.find(x => x.id === id);
+      if (!it) { try { it = await api('/api/media/' + id); } catch (e) { alert(e.message); return; } }
+
+      const title = prompt('影片名称（用于搜索 TMDb）:', it.title || '');
+      if (title === null) return;
+      const year = prompt('上映 / 首播年份（可直接留空）:', it.year || '');
+      if (year === null) return;
+      const isTv = confirm('这是一部「剧集 / 动画番剧」吗？\n确定 = 剧集(TV)，取消 = 电影(Movie)');
+
+      const row = document.querySelector(`[data-row="${id}"]`);
+      const btn = row && row.querySelector('[data-match]');
+      const restore = () => { if (btn) { btn.textContent = '手动匹配'; btn.classList.remove('animate-pulse'); } };
+      if (btn) { btn.textContent = '搜索中...'; btn.classList.add('animate-pulse'); }
+
+      try {
+        const cands = await api(`/api/scrape/search?title=${encodeURIComponent(title)}&year=${encodeURIComponent(year)}&type=${isTv ? 'tv' : 'movie'}`);
+        if (!cands.length) throw new Error('TMDb 未返回匹配结果，可尝试修改名称后重试');
+
+        let pick = cands[0];
+        if (cands.length > 1) {
+          const list = cands.map((c, i) => `${i + 1}. ${c.title}${c.year ? ' (' + c.year + ')' : ''} ★${c.rating}`).join('\n');
+          const idx = prompt('找到多个匹配项，请输入序号：\n' + list, '1');
+          if (idx === null) { restore(); return; }
+          const n = parseInt(idx);
+          if (!isNaN(n) && n >= 1 && n <= cands.length) pick = cands[n - 1];
+        }
+
+        await api(`/api/scrape/${id}`, { method: 'POST', body: JSON.stringify({ tmdb_id: pick.tmdb_id, type: isTv ? 'tv' : 'movie' }) });
+
+        if (row) row.innerHTML = `
+          <div class="flex items-center gap-3">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400"></i>
+            <span class="text-xs text-gray-200">匹配成功: <b>${esc(pick.title)}</b></span>
+          </div>
+          <span class="text-[10px] text-cyan-400/80 font-mono">已写入数据库${it.file_path ? ' / NFO' : ''}</span>`;
+        safeCreateIcons();
+        state.unscraped = state.unscraped.filter(x => x.id !== id);
+        $('#unscraped-count').textContent = `待刮削文件 (${state.unscraped.length})`;
+        await Promise.all([loadStats(), refreshMedia(), loadHero()]);
+      } catch (e) {
+        alert('刮削失败：' + e.message);
+        restore();
+      }
+    }
+
+    $('#unscraped-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-match]');
+      if (btn) matchOne(parseInt(btn.dataset.match));
+    });
+
+    async function startBatchScrape() {
+      if (document.activeElement) document.activeElement.blur();
+      const btn = document.getElementById('batch-btn');
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> 正在批量刮削...';
+      safeCreateIcons();
+      try {
+        const r = await api('/api/scrape/batch', { method: 'POST' });
+        let msg = `批量刮削完成：成功 ${r.success} 个，失败 ${r.failed} 个`;
+        if (r.errors && r.errors.length) {
+          msg += '\n\n失败详情:\n' + r.errors.slice(0, 5).map(x => `• ${x.title}: ${x.error}`).join('\n');
+        }
+        alert(msg);
+      } catch (e) {
+        alert('批量刮削失败：' + e.message);
+      }
+      btn.disabled = false; btn.innerHTML = original; safeCreateIcons();
+      await refreshAll();
+    }
+
+    /* ---------- 刮削设置面板 ---------- */
+    async function loadSettings() {
+      try {
+        const s = await api('/api/settings');
+        if (s.media_dir) state.mediaDir = s.media_dir;
+        $('#tmdb-key').placeholder = s.tmdb_api_key ? `已配置（${s.tmdb_api_key}，来源: ${s.api_key_source}）` : '粘贴 TMDb API Key (v3)';
+        $('#poster-mode').value = s.poster_cache ? 'local' : 'cdn';
+        $('#scrape-provider').value = 'tmdb';
+      } catch (e) { console.warn(e); }
+    }
+
+    $('#btn-save-key').addEventListener('click', async () => {
+      const v = $('#tmdb-key').value.trim();
+      if (!v) { alert('请输入 API Key'); return; }
+      try {
+        await api('/api/settings', { method: 'POST', body: JSON.stringify({ tmdb_api_key: v }) });
+        $('#tmdb-key').value = '';
+        alert('已保存 API Key');
+        loadSettings();
+      } catch (e) { alert('保存失败：' + e.message); }
+    });
+
+    $('#poster-mode').addEventListener('change', (e) => {
+      api('/api/settings', { method: 'POST', body: JSON.stringify({ poster_cache: e.target.value === 'local' }) })
+        .catch(err => alert('保存失败：' + err.message));
+    });
+
+    $('#scrape-provider').addEventListener('change', (e) => {
+      if (e.target.value !== 'tmdb') {
+        alert('当前版本仅内置 TMDb 刮削源；豆瓣无公开 API，为规避法律风险未集成。');
+        e.target.value = 'tmdb';
+      }
+    });
+
+    /* ---------- 详情 Modal（含分类管理） ---------- */
+    async function openDetail(id) {
+      if (document.activeElement) document.activeElement.blur();
+      let item;
+      try { item = await api('/api/media/' + id); } catch (e) { alert(e.message); return; }
+      state.currentDetail = item;
+
+      $('#modal-title').innerText = item.title;
+      $('#modal-year').innerText = item.year || '----';
+      $('#modal-rating').innerText = (item.rating !== null && item.rating !== undefined) ? `★ ${item.rating}` : '★ 未评分';
+      $('#modal-status').innerText = item.status === 'scraped' ? '已刮削' : (item.status === 'failed' ? '刮削失败' : '待刮削');
+      $('#modal-genres').innerText = (item.genres && item.genres.length) ? item.genres.join(' / ') : '—';
+      $('#modal-director').innerText = item.director || '未知';
+      $('#modal-cast').innerText = item.actors || '未知';
+      $('#modal-overview').innerText = item.overview || '暂无简介...';
+      $('#modal-file').innerText = item.file_name || (item.url ? '在线资源' : '无关联文件');
+      renderModalCats(item);
+
+      const playBtn = $('#modal-play');
+      playBtn.style.display = item.url ? 'inline-flex' : 'none';
+      playBtn.onclick = () => { if (item.url) playItem(item); };
+
+      $('#modal-rescrape').onclick = () => { closeDetailModal(); matchOne(item.id); };
+      $('#modal-delete').onclick = async () => {
+        if (!confirm(`确定删除《${item.title}》的记录？\n（不会删除磁盘上的视频文件）`)) return;
+        try {
+          await api('/api/media/' + item.id, { method: 'DELETE' });
+          closeDetailModal();
+          await refreshAll();
+        } catch (e) { alert(e.message); }
+      };
+
+      const modal = document.getElementById('detail-modal');
+      const container = document.getElementById('detail-modal-container');
+      modal.classList.remove('hidden', 'modal-backdrop-exit');
+      if (container) {
+        container.classList.remove('modal-exit-content');
+        container.classList.add('modal-enter-content');
+      }
+    }
+
+    function renderModalCats(item) {
+      const cats = (state.stats && state.stats.categories) || [];
+      const active = new Set(item.category_ids || []);
+      $('#modal-cats').innerHTML = cats.length ? cats.map(c => `
+        <button data-cat="${c.id}" class="px-3 py-1 rounded-xl text-xs border transition ${active.has(c.id)
+          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+          : 'bg-white/5 text-gray-400 border-white/10 hover:border-cyan-500/30'}">${esc(c.name)}</button>
+      `).join('') : '<span class="text-xs text-gray-500">暂无分类，可在影视库页添加</span>';
+    }
+
+    $('#modal-cats').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-cat]');
+      if (!btn || !state.currentDetail) return;
+      try {
+        const d = await api(`/api/media/${state.currentDetail.id}/categories`, {
+          method: 'POST', body: JSON.stringify({ id: parseInt(btn.dataset.cat) })
+        });
+        state.currentDetail.category_ids = d.category_ids;
+        renderModalCats(state.currentDetail);
+        loadStats();
+      } catch (err) { alert(err.message); }
+    });
+
+    function closeDetailModal() {
+      const modal = document.getElementById('detail-modal');
+      const container = document.getElementById('detail-modal-container');
+
+      if (container) {
+        container.classList.remove('modal-enter-content');
+        container.classList.add('modal-exit-content');
+      }
+      modal.classList.add('modal-backdrop-exit');
+
+      setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('modal-backdrop-exit');
+        if (container) container.classList.remove('modal-exit-content');
+      }, 230);
+    }
+
+    /* ---------- 播放器 Modal（原版保留） ---------- */
+    function playMedia(title, src, subs = []) {
+      if (document.activeElement) document.activeElement.blur();
+      const modal = document.getElementById('player-modal');
+      const container = document.getElementById('player-modal-container');
+      const video = document.getElementById('main-video');
+
+      // 清理旧的字幕轨道，避免重复叠加
+      while (video.firstChild) video.removeChild(video.firstChild);
+
+      // 附加外部软字幕（浏览器原生 <track> + WebVTT 渲染）
+      subs.forEach((sub, idx) => {
+        const track = document.createElement('track');
+        track.kind = 'subtitles';
+        track.label = sub.label || sub.name || '字幕';
+        track.srclang = sub.lang || 'und';
+        if (idx === 0) track.default = true;
+        track.src = sub.url;
+        video.appendChild(track);
+      });
+
+      document.getElementById('player-title').innerText = title;
+      video.src = src;
+
+      // 媒体元数据就绪后，把默认字幕轨切到显示状态
+      video.addEventListener('loadedmetadata', function autoShowSubtitle() {
+        try {
+          for (const t of video.textTracks) {
+            if (t.default && t.kind === 'subtitles') t.mode = 'showing';
+          }
+        } catch (e) { /* 浏览器差异忽略 */ }
+        video.removeEventListener('loadedmetadata', autoShowSubtitle);
+      });
+
+      modal.classList.remove('hidden', 'modal-backdrop-exit');
+      if (container) {
+        container.classList.remove('modal-exit-content');
+        container.classList.add('modal-enter-content');
+      }
+
+      video.play().catch(() => {});
+    }
+
+    function closePlayer() {
+      const modal = document.getElementById('player-modal');
+      const container = document.getElementById('player-modal-container');
+      const video = document.getElementById('main-video');
+
+      if (container) {
+        container.classList.remove('modal-enter-content');
+        container.classList.add('modal-exit-content');
+      }
+      modal.classList.add('modal-backdrop-exit');
+
+      setTimeout(() => {
+        video.pause();
+        while (video.firstChild) video.removeChild(video.firstChild);
+        video.removeAttribute('src');
+        video.load();
+        modal.classList.add('hidden');
+        modal.classList.remove('modal-backdrop-exit');
+        if (container) container.classList.remove('modal-exit-content');
+      }, 230);
+    }
+
+    /* ---------- 系统状态栏（真实数据） ---------- */
+
+      // 系统轮询只在桌面端启动（手机端隐藏状态栏，避免无效请求和额外耗电）
+      let systemTimer = null;
+      function startSystemMonitor() {
+        if (systemTimer || !window.matchMedia || !window.matchMedia('(min-width: 768px)').matches) return;
+        systemTimer = window.setInterval(loadSystem, 5000, 0);
+      }
+    async function loadSystem() {
+        if (window.matchMedia && !window.matchMedia('(min-width: 768px)').matches) return;
+      try {
+        const s = await api('/api/system');
+        const cpu = s.cpu;
+        $('#cpu-usage').innerText = (cpu === null || cpu === undefined) ? '--' : cpu + '%';
+        $('#cpu-bar').style.width = (cpu ? cpu : 0) + '%';
+
+        const dk = s.disk || {};
+        $('#disk-usage').innerText = `${fmtSize(dk.used)} / ${fmtSize(dk.total)}`;
+        $('#disk-bar').style.width = dk.total ? ((dk.used / dk.total) * 100).toFixed(1) + '%' : '0%';
+        $('#disk-path').innerText = dk.path || '';
+      } catch (e) { /* 忽略轮询错误 */ }
+    }
+
+    /* ---------- 初始化 ---------- */
+    window.addEventListener('load', async () => {
+      safeCreateIcons();
+      await loadStats();
+      await refreshMedia();
+      loadHero();
+      loadUnscraped();
+      loadSettings();
+      if (window.matchMedia && window.matchMedia('(min-width: 768px)').matches) { loadSystem(); startSystemMonitor(); }
+      loadFiles('');
+        if (false) {
+      void 0; // 旧的无条件轮询已停用，系统监控由 startSystemMonitor 统一管理
+        }
+    });
+  </script>
+</body>
+</html>
