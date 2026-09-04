@@ -14,6 +14,11 @@ from . import config, database
 
 log = logging.getLogger("atom.scraper")
 
+try:
+    from guessit import guessit as _guessit
+except Exception:  # guessit 尚未安装时退回内置规则
+    _guessit = None
+
 
 class ScraperError(Exception):
     """刮削失败（未配置 Key、未找到条目等）。"""
@@ -32,8 +37,26 @@ _TV_RE = re.compile(r"[sS]\d{1,2}[eE]\d{1,3}|第\s*\d+\s*[季集话]|Season\s*\d
 
 
 def parse_filename(filename: str):
-    """从视频文件名解析 (标题猜测, 年份, movie/tv)。"""
+    """从视频文件名解析 (标题猜测, 年份, movie/tv)。
+
+    优先使用 guessit 做智能识别，失败时退回内置规则。
+    """
     base = os.path.splitext(os.path.basename(filename))[0]
+
+    if _guessit is not None:
+        try:
+            info = _guessit(filename)
+            if info:
+                title = str(info.get("title") or "").strip()
+                year = info.get("year")
+                # guessit 对剧集返回 type=episode
+                gtype = str(info.get("type") or "").lower()
+                mtype = "tv" if gtype == "episode" or info.get("episode") is not None else "movie"
+                if title:
+                    return title, (str(year) if year else None), mtype
+        except Exception as e:
+            log.debug("guessit 解析失败，使用内置规则: %s", e)
+
     name = base.replace(".", " ").replace("_", " ")
     mtype = "tv" if _TV_RE.search(name) else "movie"
     year = None

@@ -8,7 +8,7 @@ import os
 import sqlite3
 import threading
 
-from . import config
+from . import config, series
 
 _local = threading.local()
 
@@ -32,11 +32,16 @@ CREATE TABLE IF NOT EXISTS media (
     status         TEXT NOT NULL DEFAULT 'unscraped',  -- unscraped | scraped | failed
     source         TEXT DEFAULT '',                    -- tmdb | manual | filename
     tmdb_id        INTEGER,
+    series_key     TEXT DEFAULT '',
+    series_title   TEXT DEFAULT '',
+    season         INTEGER,
+    episode        INTEGER,
     added_at       TEXT DEFAULT (datetime('now','localtime')),
     updated_at     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_media_status ON media(status);
 CREATE INDEX IF NOT EXISTS idx_media_type ON media(type);
+CREATE INDEX IF NOT EXISTS idx_media_series_key ON media(series_key);
 
 CREATE TABLE IF NOT EXISTS categories (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,6 +66,7 @@ _MEDIA_FIELDS = {
     "title", "original_title", "type", "year", "rating", "director", "actors",
     "overview", "cover", "backdrop", "genres", "file_path", "file_size",
     "play_url", "status", "source", "tmdb_id",
+    "series_key", "series_title", "season", "episode",
 }
 
 
@@ -98,10 +104,52 @@ def execute(sql: str, params=()) -> int:
     return cur.lastrowid
 
 
+def _ensure_series_columns(conn):
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(media)").fetchall()}
+    additions = [
+        ("series_key", "TEXT DEFAULT ''"),
+        ("series_title", "TEXT DEFAULT ''"),
+        ("season", "INTEGER"),
+        ("episode", "INTEGER"),
+    ]
+    for name, definition in additions:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE media ADD COLUMN {name} {definition}")
+
+
+def sync_series_fields(media_id: int):
+    """根据最新标题/tmdb_id/文件路径重新计算并写回剧集字段。"""
+    row = queryone("SELECT * FROM media WHERE id = ?", (media_id,))
+    if not row or row["type"] != "tv":
+        return
+    d = dict(row)
+    d["file_name"] = os.path.basename(d.get("file_path") or "")
+    meta = series.series_meta(d)
+    execute(
+        "UPDATE media SET series_key = ?, series_title = ?, season = ?, episode = ? WHERE id = ?",
+        (meta["series_key"], meta["series_title"], meta["season"], meta["episode"], media_id),
+    )
+
+
 def init_db():
     conn = _connect()
     try:
         conn.executescript(SCHEMA)
+        _ensure_series_columns(conn)
+
+        # 对旧库中缺失剧集字段的记录做一次性回填
+        rows = conn.execute(
+            "SELECT * FROM media WHERE type='tv' AND (series_key IS NULL OR series_key = '')"
+        ).fetchall()
+        for row in rows:
+            d = dict(row)
+            d["file_name"] = os.path.basename(d.get("file_path") or "")
+            meta = series.series_meta(d)
+            conn.execute(
+                "UPDATE media SET series_key=?, series_title=?, season=?, episode=? WHERE id=?",
+                (meta["series_key"], meta["series_title"], meta["season"], meta["episode"], d["id"]),
+            )
+
         for name in DEFAULT_CATEGORIES:
             conn.execute("INSERT OR IGNORE INTO categories(name) VALUES(?)", (name,))
         conn.commit()
@@ -125,8 +173,10 @@ def _parse_genres(d: dict) -> dict:
 def _row_to_dict(row) -> dict:
     d = dict(row)
     cats = d.pop("_cats", None)
+    cat_ids = d.pop("_cat_ids", None)
     _parse_genres(d)
     d["categories"] = [s for s in (cats or "").split(",") if s]
+    d["category_ids"] = [int(x) for x in (cat_ids or "").split(",") if x]
     return d
 
 
@@ -139,7 +189,10 @@ def create_media(**fields) -> int:
         raise ValueError("title 不能为空")
     cols = ", ".join(data.keys())
     marks = ", ".join("?" for _ in data)
-    return execute(f"INSERT INTO media({cols}) VALUES({marks})", tuple(data.values()))
+    mid = execute(f"INSERT INTO media({cols}) VALUES({marks})", tuple(data.values()))
+    if data.get("type") == "tv":
+        sync_series_fields(mid)
+    return mid
 
 
 def update_media(media_id: int, **fields):
@@ -153,6 +206,7 @@ def update_media(media_id: int, **fields):
         f"UPDATE media SET {set_sql}, updated_at = datetime('now','localtime') WHERE id = ?",
         (*data.values(), media_id),
     )
+    sync_series_fields(media_id)
 
 
 def delete_media(media_id: int):
@@ -205,7 +259,10 @@ def list_media(search=None, mtype=None, category_id=None, status=None,
     }.get(sort, "m.id DESC")
 
     sql = (
-        "SELECT m.*, GROUP_CONCAT(DISTINCT c.name) AS _cats FROM media m "
+        "SELECT m.*, "
+        "GROUP_CONCAT(DISTINCT c.name) AS _cats, "
+        "GROUP_CONCAT(DISTINCT mc.category_id) AS _cat_ids "
+        "FROM media m "
         "LEFT JOIN media_category mc ON mc.media_id = m.id "
         "LEFT JOIN categories c ON c.id = mc.category_id "
         + ("WHERE " + " AND ".join(where) + " " if where else "")
@@ -215,29 +272,86 @@ def list_media(search=None, mtype=None, category_id=None, status=None,
     return [_row_to_dict(r) for r in query(sql, params)]
 
 
+def _category_entity_counts():
+    """返回按“电影/剧集整体”统计的 (movie_cat, series_cat)。
+
+    电影按 media_id 计一次；剧集按 series_key 计一次，
+    同一剧的多集即使都打了同一标签也只算 1 次。
+    """
+    media_rows = query(
+        "SELECT id, type, title, file_path, tmdb_id, status, series_key FROM media"
+    )
+    pairs = query("SELECT media_id, category_id FROM media_category")
+
+    type_by_id = {}
+    tvkey_by_id = {}
+    for row in media_rows:
+        d = dict(row)
+        type_by_id[d["id"]] = d["type"]
+        if d["type"] == "tv":
+            key = d.get("series_key") or series.series_meta(d)["series_key"]
+            tvkey_by_id[d["id"]] = key
+
+    movie_cat = {}
+    series_cat = {}
+    for mid, cid in pairs:
+        cid = int(cid)
+        mtype = type_by_id.get(mid)
+        if mtype == "movie":
+            movie_cat.setdefault(cid, set()).add(mid)
+        elif mtype == "tv":
+            key = tvkey_by_id.get(mid)
+            if key:
+                series_cat.setdefault(cid, set()).add(key)
+    return movie_cat, series_cat
+
+
 def stats() -> dict:
-    def count(sql, params=()):
-        return queryone(sql, params)["n"]
+    media_rows = query(
+        "SELECT id, type, title, file_path, tmdb_id, status, series_key FROM media"
+    )
+    movie = 0
+    tv_keys = set()
+    scraped = unscraped = failed = 0
+    for row in media_rows:
+        d = dict(row)
+        if d["type"] == "movie":
+            movie += 1
+        else:
+            key = d.get("series_key") or series.series_meta(d)["series_key"]
+            tv_keys.add(key)
+        status = d.get("status")
+        if status == "scraped":
+            scraped += 1
+        elif status == "unscraped":
+            unscraped += 1
+        elif status == "failed":
+            failed += 1
 
     return {
-        "total": count("SELECT COUNT(*) AS n FROM media"),
-        "movie": count("SELECT COUNT(*) AS n FROM media WHERE type='movie'"),
-        "tv": count("SELECT COUNT(*) AS n FROM media WHERE type='tv'"),
-        "scraped": count("SELECT COUNT(*) AS n FROM media WHERE status='scraped'"),
-        "unscraped": count("SELECT COUNT(*) AS n FROM media WHERE status='unscraped'"),
-        "failed": count("SELECT COUNT(*) AS n FROM media WHERE status='failed'"),
+        "total": movie + len(tv_keys),
+        "movie": movie,
+        "tv": len(tv_keys),
+        "scraped": scraped,
+        "unscraped": unscraped,
+        "failed": failed,
         "categories": list_categories(),
     }
 
 
 # ---------- categories ----------
 def list_categories():
-    rows = query(
-        "SELECT c.id, c.name, COUNT(mc.media_id) AS count FROM categories c "
-        "LEFT JOIN media_category mc ON mc.category_id = c.id "
-        "GROUP BY c.id ORDER BY c.id"
-    )
-    return [dict(r) for r in rows]
+    rows = query("SELECT id, name FROM categories ORDER BY id")
+    movie_cat, series_cat = _category_entity_counts()
+    return [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "count": len(movie_cat.get(r["id"], set()))
+                     + len(series_cat.get(r["id"], set())),
+        }
+        for r in rows
+    ]
 
 
 def get_or_create_category(name: str) -> int:

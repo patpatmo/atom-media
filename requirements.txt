@@ -12,3 +12,5 @@ charset-normalizer==3.3.2
 idna==3.6
 urllib3==2.2.1
 certifi==2024.2.2
+# 文件名智能解析（guessit 的传递依赖由 pip 自动解析）
+guessit==3.8.0

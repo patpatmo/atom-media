@@ -15,7 +15,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.utils import safe_join
 
 from . import (__version__, auth, config, database, icon, scanner,
-               scraper, subtitles)
+               scraper, series, subtitles)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,6 +78,27 @@ def _serialize(d: dict) -> dict:
     else:
         d["url"] = d.get("play_url") or ""
         d["file_exists"] = False
+
+    if d.get("type") == "tv":
+        if d.get("series_key"):
+            d["series_title"] = d.get("series_title") or ""
+            d["season"] = d.get("season")
+            d["episode"] = d.get("episode")
+            d["episode_label"] = f"第 {d['episode']} 集" if d["episode"] else ""
+            d["season_label"] = f"第 {d['season']} 季" if d["season"] else "单季/未识别"
+        else:
+            d.update(series.series_meta(d))
+            try:
+                database.sync_series_fields(d["id"])
+            except Exception:
+                pass
+    else:
+        d["series_key"] = ""
+        d["series_title"] = ""
+        d["season"] = None
+        d["episode"] = None
+        d["episode_label"] = ""
+        d["season_label"] = ""
     return d
 
 
@@ -215,7 +236,7 @@ def api_system():
         disk = {"total": du.total, "used": du.used, "free": du.free, "path": display_path}
     except Exception:
         disk = {"total": 0, "used": 0, "free": 0, "path": display_path}
-    return jsonify({"cpu": _cpu_percent(), "disk": disk, "db": database.stats()})
+    return jsonify({"cpu": _cpu_percent(), "disk": disk})
 
 
 @app.get("/api/stats")
@@ -360,6 +381,81 @@ def api_media_category_toggle(media_id: int):
     added = database.toggle_media_category(media_id, cid)
     item = database.get_media(media_id)
     return jsonify({"added": added, "category_ids": item["category_ids"]})
+
+
+def _media_ids_for_series_key(series_key: str):
+    """返回该剧集归组键对应的所有分集 media_id。"""
+    rows = database.query(
+        "SELECT id FROM media WHERE type = 'tv' AND series_key = ?", (series_key,)
+    )
+    return [r["id"] for r in rows]
+
+
+@app.get("/api/series/<series_key>/categories")
+def api_series_categories(series_key: str):
+    ids = _media_ids_for_series_key(series_key)
+    if not ids:
+        abort(404, "剧集不存在")
+    if ids:
+        marks = ",".join("?" * len(ids))
+        rows = database.query(
+            f"SELECT category_id FROM media_category WHERE media_id IN ({marks})", ids
+        )
+    else:
+        rows = []
+    return jsonify({"category_ids": sorted({r["category_id"] for r in rows})})
+
+
+@app.post("/api/series/<series_key>/categories")
+def api_series_category_toggle(series_key: str):
+    """按整个剧集切换分类：一次性应用到该剧全部分集。body: {id} 或 {name}"""
+    ids = _media_ids_for_series_key(series_key)
+    if not ids:
+        abort(404, "剧集不存在")
+
+    body = request.get_json(silent=True) or {}
+    if body.get("id") is not None and str(body["id"]).isdigit():
+        cid = int(body["id"])
+    elif body.get("name"):
+        name = str(body["name"]).strip()
+        if not name:
+            abort(400, "分类名称不能为空")
+        cid = database.get_or_create_category(name)
+    else:
+        abort(400, "缺少分类 id 或 name")
+
+    added_any = False
+    removed_any = False
+    marks = ",".join("?" * len(ids))
+    active_rows = database.query(
+        f"SELECT media_id FROM media_category WHERE category_id = ? AND media_id IN ({marks})",
+        [cid, *ids],
+    )
+    if len(active_rows) == len(ids):
+        # 剧集全部分集都已打上该标签：整体移除
+        database.execute(
+            f"DELETE FROM media_category WHERE category_id = ? AND media_id IN ({marks})",
+            [cid, *ids],
+        )
+        removed_any = True
+    else:
+        # 未打标签或只有部分分集打标签：补齐到整部剧
+        for mid in ids:
+            database.execute(
+                "INSERT OR IGNORE INTO media_category(media_id, category_id) VALUES(?, ?)",
+                (mid, cid),
+            )
+        added_any = True
+
+    rows = database.query(
+        f"SELECT category_id FROM media_category WHERE media_id IN ({marks})", ids
+    )
+    return jsonify({
+        "added": added_any,
+        "removed": removed_any,
+        "affected": len(ids),
+        "category_ids": sorted({r["category_id"] for r in rows}),
+    })
 
 
 # ---------- 扫描 ----------

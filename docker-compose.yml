@@ -7,7 +7,7 @@ services:
     image: atom-media:1.0.0
     container_name: atom-media
     # 树莓派/玩客云上本机构建与运行时保留此行；如在其他架构主机运行请删除或修改
-    platform: linux/arm/v7
+    # platform: linux/arm/v7  # 默认自动适应当前架构；如需强制 ARMv7 可取消注释
     restart: unless-stopped
     ports:
       - "8080:8080"

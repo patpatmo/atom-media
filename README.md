@@ -21,7 +21,9 @@ atom-media/
 │   ├── main.py             # Flask Web 服务 + REST API + 定时调度
 │   ├── config.py           # 全部环境变量配置
 │   ├── database.py         # SQLite 存储层（标准库 sqlite3，无 ORM）
+│   ├── auth.py             # 单用户认证（环境变量预置 / 首次注册）
 │   ├── scraper.py          # TMDb 刮削 + 文件名解析 + NFO/海报缓存
+│   ├── series.py           # 剧集归组、季/集解析
 │   ├── subtitles.py        # 外部软字幕识别 + SRT/ASS→WebVTT 转换
 │   └── scanner.py          # 媒体目录扫描入库
 ├── web/
@@ -70,7 +72,28 @@ docker save atom-media:latest | gzip > atom-media.tar.gz
 
 > 也可以直接推送到镜像仓库：`docker buildx build --platform linux/arm/v7 -t <user>/atom-media:latest --push .`
 
-### 2.3 纯 docker run（不用 compose）
+
+### 2.3 直接使用 GitHub Container Registry（GHCR）
+
+GitHub Actions 会自动构建并推送多架构镜像（amd64 / arm64 / armv7）：
+
+```bash
+docker pull ghcr.io/patpatmo/atom-media:latest
+
+docker run -d --name atom-media \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e AUTH_USERNAME=admin \
+  -e AUTH_PASSWORD=你的密码 \
+  -e TMDB_API_KEY=你的tmdb_api_key \
+  -v $(pwd)/data:/data \
+  -v /DATA/Media:/media \
+  ghcr.io/patpatmo/atom-media:latest
+```
+
+> 该镜像托管在 GitHub Container Registry，不依赖 Docker Hub。
+
+### 2.4 纯 docker run（不用 compose）
 
 ```bash
 docker run -d --name atom-media \
@@ -115,6 +138,7 @@ docker run -d --name atom-media \
 1. **文件夹目录** → 点击「扫描入库」：后端递归扫描 `/media` 中所有视频文件（mp4/mkv/avi…），解析文件名（标题 / 年份 / 电影或剧集）写入 SQLite，状态为"待刮削"。
 2. **极简刮削中心** → 「一键批量刮削」或逐个「手动匹配」（弹出候选列表选择）：从 TMDb 拉取标题、海报、简介、导演、演员、年份、评分、类型，写库并生成 NFO。
 3. **影视库** → 海报墙展示；点击卡片直接播放（HTTP Range 流式直连，无转码）；点 ⓘ 打开详情，可切换"已看 / 想看 / 收藏"等分类标签、重新刮削、删除记录。
+   - **剧集自动归组**：同一部剧的每一集会合并成一张剧集卡片，点击后弹出选集窗口，按季/集选择播放；不再每个分集单独占一张卡片。
    - **外部软字幕**：视频同目录下若有同名 `.srt / .ass / .ssa / .vtt`（如 `Movie.zh.srt`、`Movie.ass`），播放器会自动加载为字幕轨（浏览器原生渲染，无需封装/转码），字幕菜单可切换。
 4. **分类标签**：影视库筛选栏动态显示全部自定义标签（带数量），「＋ 标签」新建，悬浮标签点「×」删除；筛选 `cat:<id>` 由后端完成。
 5. 「＋ 添加影片」可手动录入无本地文件的在线影片（填名称即自动刮削，播放地址可后续在详情中维护）。
