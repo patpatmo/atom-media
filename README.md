@@ -64,6 +64,10 @@ docker run -d \
 | `AUTH_USERNAME` | 空 | 预置用户名（不填则首次访问时注册） |
 | `AUTH_PASSWORD` | 空 | 预置密码（与上面成对使用） |
 | `SESSION_SECRET` | 自动生成 | 登录态签名密钥（固定可保持重启后登录） |
+| `COOKIE_SECURE` | `false` | 通过 HTTPS 反代访问时设为 `true`，Cookie 仅 HTTPS 传输 |
+| `LOGIN_MAX_FAILED` | `5` | 同一 IP 15 分钟内允许的登录失败次数 |
+| `LOGIN_LOCK_MINUTES` | `15` | 登录失败锁定窗口（分钟） |
+| `TRUST_PROXY_IP_HEADER` | 空 | 用 Nginx/Caddy 反代时填 `x-real-ip`，用于正确限速来源 IP |
 
 ---
 

@@ -8,6 +8,7 @@ import os
 import shutil
 import threading
 import time
+from datetime import timedelta
 
 from flask import (Flask, abort, jsonify, redirect, request, send_file,
                    send_from_directory, session)
@@ -30,6 +31,14 @@ try:
     app.json.ensure_ascii = False
 except Exception:
     app.config["JSON_AS_ASCII"] = False
+
+# 轻量公网安全：Cookie 与会话基础加固
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=config.COOKIE_SECURE,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7),
+)
 
 # 补充常见容器格式的 MIME，保证 <video> 直连播放响应头正确
 for _ext, _mime in {
@@ -54,6 +63,16 @@ def _require_auth_for_api():
     if not session.get("authenticated"):
         return jsonify({"error": "未登录或会话已过期"}), 401
     return None
+
+
+@app.after_request
+def _add_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return response
+
 
 
 # ---------- 统一错误输出（JSON） ----------
@@ -176,13 +195,51 @@ def api_auth_status():
     })
 
 
+# ---------- 轻量登录防爆破（内存计数，无外部依赖） ----------
+_login_failures = {}
+_login_failures_lock = threading.Lock()
+
+
+def _client_ip() -> str:
+    if config.TRUST_PROXY_IP_HEADER:
+        return request.headers.get(config.TRUST_PROXY_IP_HEADER, "") or request.remote_addr or "unknown"
+    return request.remote_addr or "unknown"
+
+
+def _login_too_many(ip: str) -> bool:
+    now = time.time()
+    window = config.LOGIN_LOCK_MINUTES * 60
+    with _login_failures_lock:
+        times = [t for t in _login_failures.get(ip, []) if now - t < window]
+        _login_failures[ip] = times
+        return len(times) >= config.LOGIN_MAX_FAILED
+
+
+def _login_record_failure(ip: str):
+    with _login_failures_lock:
+        _login_failures.setdefault(ip, []).append(time.time())
+
+
+def _login_clear_failures(ip: str):
+    with _login_failures_lock:
+        _login_failures.pop(ip, None)
+
+
+
 @app.post("/api/auth/login")
 def api_auth_login():
+    ip = _client_ip()
+    if _login_too_many(ip):
+        return jsonify({"error": "登录失败次数过多，请稍后再试"}), 429
+
     body = request.get_json(silent=True) or {}
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
     if not auth.verify(username, password):
+        _login_record_failure(ip)
         return jsonify({"error": "用户名或密码不正确"}), 401
+
+    _login_clear_failures(ip)
     session.clear()
     session["authenticated"] = True
     session["username"] = username

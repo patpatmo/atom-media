@@ -60,6 +60,13 @@ AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "").strip()
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
 # 建议通过 docker run -e SESSION_SECRET=... 固定；未设置时自动生成并存 SQLite
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "").strip()
+# 公网 HTTPS 反代后建议设为 true，Cookie 仅通过 HTTPS 传输
+COOKIE_SECURE = _env_bool("COOKIE_SECURE", "false")
+# 登录防爆破：同一 IP 15 分钟内最多失败次数
+# 如果使用 Nginx/Caddy 等反代且设置了 X-Real-IP，可填 x-real-ip 或 x-forwarded-for
+TRUST_PROXY_IP_HEADER = os.environ.get("TRUST_PROXY_IP_HEADER", "").strip().lower()
+LOGIN_MAX_FAILED = int(os.environ.get("LOGIN_MAX_FAILED", "5"))
+LOGIN_LOCK_MINUTES = int(os.environ.get("LOGIN_LOCK_MINUTES", "15"))
 
 # ---------- 刮削（TMDb，免费公开 API）----------
 TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "").strip()
