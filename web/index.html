@@ -607,7 +607,7 @@
       </div>
 
       <!-- 悬浮单集预览 -->
-      <div id="episode-hover-card" style="display:none" class="p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 transition-all duration-300 flex items-center justify-between gap-4 shadow-[0_4px_20px_rgba(6,182,212,0.1)]">
+      <div id="episode-hover-card" class="p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 transition-all duration-300 flex items-center justify-between gap-4 shadow-[0_4px_20px_rgba(6,182,212,0.1)]">
         <div class="flex items-center gap-3 min-w-0 flex-1">
           <div id="ep-hover-num" class="px-2.5 py-1 rounded-xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-mono text-xs font-bold shrink-0">E--</div>
           <div class="min-w-0 flex-1">
@@ -1485,7 +1485,7 @@
     }
 
       /* ---------- 剧集选集 Modal ---------- */
-      const seriesModalState = { episodes: [], seasons: [], season: null };
+      const seriesModalState = { episodes: [], seasons: [], season: null, tmdbEpisodes: [] };
         const seriesInfoState = { key: null, categoryIds: new Set() };
 
       async function openSeriesModal(seriesKey) {
@@ -1743,6 +1743,7 @@
 
           renderSeriesSeasons();
           renderSeriesEpisodes();
+            fetchTmdbSeasonDetail();
 
           const modal = document.getElementById('series-modal');
           const container = document.getElementById('series-modal-container');
@@ -1786,9 +1787,9 @@
         grid.innerHTML = list.map(ep => `
           <button data-episode="${ep.id}" data-episode-num="${ep.episode || ''}"
             title="${esc(ep.file_name || ep.title)}"
-            class="py-2.5 px-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-300 border border-white/10 hover:border-cyan-500/40 text-xs text-gray-200 transition font-mono flex flex-col items-center justify-center gap-0.5 group focus:border-cyan-500">
+            class="py-3.5 px-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-300 border border-white/10 hover:border-cyan-500/40 text-xs text-gray-200 transition font-mono flex flex-col items-center justify-center gap-0.5 group focus:border-cyan-500">
             <span class="font-bold">${ep.episode ? 'E' + String(ep.episode).padStart(2, '0') : (ep.episode_label || 'E--')}</span>
-            <span class="text-[9px] text-gray-500 group-hover:text-cyan-400/80">${ep.file_size ? fmtSize(ep.file_size) : ''}</span>
+            <span style="display:none" class="text-[9px] text-gray-500 group-hover:text-cyan-400/80">${ep.file_size ? fmtSize(ep.file_size) : ''}</span>
           </button>
         `).join('');
         safeCreateIcons();
@@ -1803,6 +1804,19 @@
         document.getElementById('ep-hover-desc').innerText = ep.overview || '暂无单集简介';
         document.getElementById('ep-hover-play-btn').dataset.episode = ep.id;
       }
+
+        // ===== 新版 hoverEpisode（使用 TMDb 单集信息，覆盖旧版）=====
+        function hoverEpisode(epId) {
+          const ep = seriesModalState.episodes.find(x => x.id === Number(epId));
+          if (!ep) return;
+          const tmd = (seriesModalState.tmdbEpisodes || []).find(e => Number(e.episode) === Number(ep.episode));
+          document.getElementById('ep-hover-num').innerText = ep.episode ? 'E' + String(ep.episode).padStart(2, '0') : 'E--';
+          document.getElementById('ep-hover-title').innerText = (tmd && tmd.name) || ep.file_name || ((ep.series_title || '') + (ep.episode ? ' 第' + ep.episode + '集' : ''));
+          document.getElementById('ep-hover-meta').innerText = [(tmd && tmd.runtime) ? tmd.runtime + 'm' : '', ep.file_size ? fmtSize(ep.file_size) : ''].filter(Boolean).join(' • ');
+          document.getElementById('ep-hover-desc').innerText = (tmd && tmd.overview) || ep.overview || '暂无单集简介';
+          document.getElementById('ep-hover-play-btn').dataset.episode = ep.id;
+        }
+
 
       function resetHoverEpisode() {
         document.getElementById('ep-hover-num').innerText = 'E--';
@@ -1868,11 +1882,28 @@
           document.getElementById('series-modal-quality').innerText = first.file_name || '分集管理';
         }
 
+        async function fetchTmdbSeasonDetail() {
+          const season = seriesModalState.season;
+          if (!season) return;
+          const list = seriesModalState.episodes.filter(ep => ep.season === season);
+          const first = list[0] || seriesModalState.episodes[0];
+          if (!first || !first.tmdb_id) return;
+          try {
+            const info = await api(`/api/tmdb/season?tmdb_id=${first.tmdb_id}&season=${season}`);
+            seriesModalState.tmdbEpisodes = info.episodes || [];
+            if (info.poster) document.getElementById('series-modal-cover').src = info.poster;
+            if (info.year) document.getElementById('series-modal-year').innerText = info.year;
+            if (info.overview) document.getElementById('series-modal-overview').innerText = info.overview;
+          } catch (e) { seriesModalState.tmdbEpisodes = []; /* 获取失败时保留本地剧集信息 */ }
+        }
+
+
         // 切换季度：刷新详情并播放过渡动画
         document.getElementById('series-seasons').addEventListener('click', (e) => {
           const btn = e.target.closest('[data-season]');
           if (!btn) return;
           renderSeriesModalDetail();
+            fetchTmdbSeasonDetail();
           const detail = document.getElementById('series-modal-detail');
           if (detail) {
             detail.classList.remove('series-detail-animate');

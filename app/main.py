@@ -8,6 +8,7 @@ import os
 import shutil
 import threading
 import time
+import json
 from datetime import timedelta
 
 from flask import (Flask, abort, jsonify, redirect, request, send_file,
@@ -575,6 +576,41 @@ def api_scrape_batch():
             errors.append({"id": it["id"], "title": it["title"], "error": str(e)})
             log.warning("批量刮削失败 #%s %s: %s", it["id"], it["title"], e)
     return jsonify({"success": ok, "failed": fail, "errors": errors})
+
+
+
+@app.get("/api/tmdb/season")
+def api_tmdb_season():
+    """按 TMDb ID + 季号获取该季海报/简介/分集信息（登录后可用）。
+
+    优先读取 SQLite 缓存；没有缓存时才请求 TMDb，并把结果写回。
+    """
+    try:
+        tmdb_id = int(request.args.get("tmdb_id") or "")
+        season = int(request.args.get("season") or "")
+    except (TypeError, ValueError):
+        abort(400, "tmdb_id 和 season 必须为数字")
+    if not tmdb_id or season < 1:
+        abort(400, "参数无效")
+
+    cache_key = f"tmdb_season:{tmdb_id}:{season}"
+    cached = database.get_setting(cache_key)
+    if cached:
+        try:
+            return jsonify(json.loads(cached))
+        except Exception:
+            pass
+
+    try:
+        data = scraper.season_details(tmdb_id, season)
+    except scraper.ScraperError as e:
+        return jsonify({"error": str(e)}), 422
+
+    try:
+        database.set_setting(cache_key, json.dumps(data, ensure_ascii=False))
+    except Exception:
+        pass
+    return jsonify(data)
 
 
 # ---------- 设置 ----------

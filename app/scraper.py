@@ -153,6 +153,33 @@ def details(tmdb_id: int, mtype: str = "movie") -> dict:
     }
 
 
+
+def season_details(tmdb_id: int, season: int) -> dict:
+    """获取某部剧某一季的 TMDb 信息（用于切季时切换顶部海报/简介）。"""
+    d = _tmdb_get(f"tv/{tmdb_id}/season/{season}")
+    date = d.get("air_date") or ""
+    episodes = []
+    for ep in d.get("episodes") or []:
+        episodes.append({
+            "episode": ep.get("episode_number"),
+            "name": ep.get("name") or "",
+            "overview": (ep.get("overview") or "").strip(),
+            "air_date": ep.get("air_date") or "",
+            "runtime": ep.get("runtime"),
+            "still_path": _img(ep.get("still_path"), "w300"),
+        })
+    return {
+        "name": d.get("name") or "",
+        "overview": (d.get("overview") or "").strip(),
+        "poster": _img(d.get("poster_path")),
+        "year": date[:4],
+        "air_date": date,
+        "season": season,
+        "tmdb_id": tmdb_id,
+        "episodes": episodes,
+    }
+
+
 # ---------- 海报本地缓存 ----------
 def cache_poster(media_id: int, url: str) -> str:
     os.makedirs(config.POSTER_DIR, exist_ok=True)
