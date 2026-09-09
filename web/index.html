@@ -197,6 +197,16 @@
       transition: opacity 0.25s ease-out;
     }
 
+      /* 剧集详情切换过渡 */
+      @keyframes seriesDetailFade {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .series-detail-animate {
+        animation: seriesDetailFade 0.3s ease;
+      }
+
+
     /* 极简滚动条 */
     ::-webkit-scrollbar {
       width: 5px;
@@ -552,25 +562,70 @@
     </div>
   </div>
 
-  <!-- 3. 剧集选集 Modal（同一部剧集中所有季/集） -->
+  <!-- 3. 剧集选集 Modal（支持季切换 / 单集悬浮预览） -->
   <div id="series-modal" onclick="closeSeriesModal()" class="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3 sm:p-4 transition-opacity duration-300 cursor-pointer">
-    <div id="series-modal-container" onclick="event.stopPropagation()" class="glass-panel w-full max-w-2xl rounded-3xl p-5 sm:p-6 border-white/15 space-y-5 relative liquid-border cursor-default">
-      <button onclick="closeSeriesModal()" class="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition">
+    <div id="series-modal-container" onclick="event.stopPropagation()" class="glass-panel w-full max-w-3xl rounded-3xl p-5 md:p-7 border-white/15 space-y-5 relative liquid-border cursor-default my-auto">
+      <button onclick="closeSeriesModal()" class="absolute top-4 right-4 z-20 p-2 rounded-full bg-black/40 hover:bg-white/20 text-gray-300 hover:text-white transition backdrop-blur-md">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
 
-      <div>
-        <span class="text-[10px] uppercase font-mono tracking-widest text-cyan-400">TV Series &amp; Anime</span>
-        <h3 id="series-modal-title" class="text-xl sm:text-2xl font-bold text-white pr-8">剧集</h3>
+      <!-- 顶部剧集详情区 -->
+      <div id="series-modal-detail" class="flex flex-col sm:flex-row gap-5 items-start">
+        <div class="w-28 sm:w-36 aspect-[2/3] rounded-2xl overflow-hidden border border-white/10 shrink-0 bg-black/40 shadow-xl relative">
+          <img id="series-modal-cover" src="" alt="Series Cover" class="w-full h-full object-cover">
+          <span id="series-modal-status" class="absolute top-2 left-2 px-2 py-0.5 rounded bg-cyan-950/90 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 backdrop-blur-md">TV</span>
+        </div>
+
+        <div class="space-y-2.5 flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-[10px] uppercase font-mono tracking-widest text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-md">TV Series</span>
+            <span id="series-modal-quality" class="text-[10px] font-mono text-gray-300 bg-white/10 border border-white/10 px-2 py-0.5 rounded-md">分集管理</span>
+          </div>
+
+          <h3 id="series-modal-title" class="text-xl sm:text-2xl font-bold text-white tracking-tight pr-8">剧集</h3>
+
+          <div class="flex items-center gap-3 text-xs text-gray-300 flex-wrap">
+            <span id="series-modal-rating" class="text-amber-400 font-bold flex items-center gap-1">★ --</span>
+            <span class="text-gray-600">•</span>
+            <span id="series-modal-year" class="font-mono">----</span>
+            <span class="text-gray-600">•</span>
+            <div id="series-modal-genres" class="flex items-center gap-1.5 flex-wrap text-gray-400"></div>
+          </div>
+
+          <p id="series-modal-overview" class="text-xs text-gray-400 line-clamp-2 leading-relaxed"></p>
+
+          <div class="pt-1 flex items-center gap-3">
+            <span id="series-modal-episode-info" class="text-[10px] font-mono text-gray-500"></span>
+          </div>
+        </div>
       </div>
 
-      <div class="flex items-center gap-2 border-b border-white/10 pb-3 overflow-x-auto">
-        <div id="series-seasons" class="flex items-center gap-2 shrink-0"></div>
-        <span class="text-xs text-gray-400 ml-auto shrink-0" id="series-episodes-count">共 0 集</span>
+      <!-- 季度与集数 -->
+      <div class="flex items-center justify-between border-t border-b border-white/10 py-3 flex-wrap gap-3">
+        <div class="flex items-center gap-2 overflow-x-auto" id="series-seasons"></div>
+        <span class="text-xs text-gray-400 font-mono ml-auto shrink-0" id="series-episodes-count">共 0 集</span>
       </div>
 
-      <div class="grid grid-cols-3 sm:grid-cols-6 gap-3 max-h-[260px] overflow-y-auto pr-1" id="series-episodes-grid">
-        <div class="col-span-full py-8 text-center text-gray-500 text-xs">加载中...</div>
+      <!-- 悬浮单集预览 -->
+      <div id="episode-hover-card" style="display:none" class="p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 transition-all duration-300 flex items-center justify-between gap-4 shadow-[0_4px_20px_rgba(6,182,212,0.1)]">
+        <div class="flex items-center gap-3 min-w-0 flex-1">
+          <div id="ep-hover-num" class="px-2.5 py-1 rounded-xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-mono text-xs font-bold shrink-0">E--</div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h4 id="ep-hover-title" class="text-xs font-bold text-white truncate">悬浮到某一集查看</h4>
+              <span id="ep-hover-meta" class="text-[10px] text-cyan-400/90 font-mono shrink-0"></span>
+            </div>
+            <p id="ep-hover-desc" class="text-[11px] text-gray-400 line-clamp-1 mt-0.5">暂无简介</p>
+          </div>
+        </div>
+        <button id="ep-hover-play-btn" class="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shrink-0 transition flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.4)] active:scale-95">
+          <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> 播放此集
+        </button>
+      </div>
+
+      <!-- 选集网格 -->
+      <div class="max-h-[220px] overflow-y-auto pr-1">
+        <div class="grid grid-cols-4 sm:grid-cols-6 gap-2.5" id="series-episodes-grid"></div>
       </div>
     </div>
   </div>
@@ -790,10 +845,113 @@
         return cards;
       }
 
+        // ===== 按季分卡版 buildLibraryCards（覆盖上面版本）=====
+        function buildLibraryCards(items) {
+          const seasonMap = new Map();
+          const cards = [];
+
+          for (const it of items) {
+            if (it.type === 'tv' && it.series_key) {
+              const season = it.season || null;
+              const seasonKey = `${it.series_key}::${season === null ? 0 : season}`;
+              if (!seasonMap.has(seasonKey)) {
+                const baseTitle = it.series_title || it.title || '剧集';
+                seasonMap.set(seasonKey, {
+                  kind: 'series',
+                  series_key: it.series_key,
+                  season: season,
+                  seasonKey: seasonKey,
+                  title: season ? `${baseTitle} 第${season}季` : baseTitle,
+                  seriesTitle: baseTitle,
+                  type: 'tv',
+                  year: it.year || '',
+                  rating: it.rating,
+                  cover: it.cover || '',
+                  backdrop: it.backdrop || '',
+                  overview: it.overview || '',
+                  categories: [],
+                  episodes: [],
+                  status: it.status,
+                });
+              }
+              const group = seasonMap.get(seasonKey);
+              group.episodes.push(it);
+              if (!group.rating && it.rating) group.rating = it.rating;
+              if (!group.cover && it.cover) group.cover = it.cover;
+              if (it.year && !group.year) group.year = it.year;
+              if (Array.isArray(it.categories)) {
+                it.categories.forEach(c => { if (!group.categories.includes(c)) group.categories.push(c); });
+              }
+            } else {
+              cards.push(it);
+            }
+          }
+
+          for (const group of seasonMap.values()) {
+            group.episodes.sort((a, b) => (a.season || 0) - (b.season || 0) || (a.episode || 0) - (b.episode || 0));
+            group.episodeCount = group.episodes.length;
+            cards.push(group);
+          }
+
+          return cards;
+        }
+
+        // ===== 整部剧合并版 buildLibraryCards（覆盖上面的按季分卡）=====
+        function buildLibraryCards(items) {
+          const seriesMap = new Map();
+          const cards = [];
+
+          for (const it of items) {
+            if (it.type === 'tv' && it.series_key) {
+              if (!seriesMap.has(it.series_key)) {
+                seriesMap.set(it.series_key, {
+                  kind: 'series',
+                  series_key: it.series_key,
+                  seasonKey: it.series_key,
+                  title: it.series_title || it.title || '剧集',
+                  seriesTitle: it.series_title || it.title || '剧集',
+                  type: 'tv',
+                  year: it.year || '',
+                  rating: it.rating,
+                  cover: it.cover || '',
+                  backdrop: it.backdrop || '',
+                  overview: it.overview || '',
+                  categories: [],
+                  episodes: [],
+                  seasons: new Set(),
+                  status: it.status,
+                });
+              }
+              const group = seriesMap.get(it.series_key);
+              group.episodes.push(it);
+              if (it.season) group.seasons.add(it.season);
+              if (!group.rating && it.rating) group.rating = it.rating;
+              if (!group.cover && it.cover) group.cover = it.cover;
+              if (it.year && !group.year) group.year = it.year;
+              if (Array.isArray(it.categories)) {
+                it.categories.forEach(c => { if (!group.categories.includes(c)) group.categories.push(c); });
+              }
+            } else {
+              cards.push(it);
+            }
+          }
+
+          for (const group of seriesMap.values()) {
+            group.episodes.sort((a, b) => (a.season || 0) - (b.season || 0) || (a.episode || 0) - (b.episode || 0));
+            group.seasonList = Array.from(group.seasons).sort((a, b) => a - b);
+            group.episodeCount = group.episodes.length;
+            cards.push(group);
+          }
+
+          return cards;
+        }
+
+
+
       function renderCard(item, index) {
         const isSeries = item.kind === 'series';
         const mainAttr = isSeries
-          ? `data-series="${esc(item.series_key)}"`
+          ? `data-series="${esc(item.seasonKey || item.series_key)}"`
           : `data-id="${item.id}"`;
         const metaText = isSeries
           ? `${esc(item.year) || ''} • ${item.episodeCount} 集${item.seasonList && item.seasonList.length > 1 ? ' • ' + item.seasonList.length + ' 季' : ''}`
@@ -1533,6 +1691,195 @@
 
 
 
+
+
+
+      // ===== 新版剧集弹窗：按季打开 + 详情展示 + 悬浮单集预览（覆盖旧版函数）=====
+      async function openSeriesModal(seasonKey) {
+        if (!seasonKey) return;
+        const parts = String(seasonKey).split('::');
+        const seriesKey = parts[0];
+        const wantSeason = parts.length > 1 && parts[1] !== '' ? Number(parts[1]) : null;
+          const wantNullSeason = parts.length > 1 && parts[1] === '0';
+
+        try {
+          const d = await api('/api/media?type=tv&limit=2000');
+          const allEpisodes = (d.items || []).filter(it => it.series_key === seriesKey);
+          if (!allEpisodes.length) {
+            alert('没有找到该剧集的分集记录');
+            return;
+          }
+
+          allEpisodes.sort((a, b) => (a.season || 0) - (b.season || 0) || (a.episode || 0) - (b.episode || 0));
+          const seasons = [];
+          allEpisodes.forEach(ep => {
+            const s = ep.season;
+            if (s && !seasons.includes(s)) seasons.push(s);
+          });
+          seasons.sort((a, b) => a - b);
+
+          seriesModalState.episodes = allEpisodes;
+          seriesModalState.seasons = seasons;
+          seriesModalState.season = wantSeason !== null && seasons.includes(wantSeason)
+            ? wantSeason
+            : (seasons.length ? seasons[0] : null);
+            seriesModalState.season = wantNullSeason ? null : (wantSeason !== null && seasons.includes(wantSeason) ? wantSeason : (seasons.length ? seasons[0] : null));
+
+          const first = allEpisodes[0] || {};
+          const baseTitle = first.series_title || first.title || '剧集';
+          const season = seriesModalState.season;
+          document.getElementById('series-modal-title').innerText = season ? `${baseTitle} 第${season}季` : baseTitle;
+          document.getElementById('series-modal-rating').innerText = (first.rating != null ? '★ ' + first.rating : '★ --');
+          document.getElementById('series-modal-year').innerText = first.year || '----';
+          document.getElementById('series-modal-cover').src = first.cover || 'https://placehold.co/400x600/0f172a/06b6d4?text=ATOM';
+          document.getElementById('series-modal-status').innerText = first.status === 'scraped' ? '已刮削' : (first.status || 'TV');
+          document.getElementById('series-modal-overview').innerText = first.overview || '暂无简介';
+          const genres = first.genres || [];
+          document.getElementById('series-modal-genres').innerHTML = genres.length
+            ? genres.map(g => `<span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px]">${esc(g)}</span>`).join('')
+            : '<span class="text-xs text-gray-500">未知</span>';
+          document.getElementById('series-modal-episode-info').innerText = `共 ${allEpisodes.length} 集${seasons.length > 1 ? '，' + seasons.length + ' 季' : ''}`;
+          document.getElementById('series-modal-quality').innerText = first.file_name || '分集管理';
+
+          renderSeriesSeasons();
+          renderSeriesEpisodes();
+
+          const modal = document.getElementById('series-modal');
+          const container = document.getElementById('series-modal-container');
+          modal.classList.remove('hidden', 'modal-backdrop-exit');
+          if (container) {
+            container.classList.remove('modal-exit-content');
+            container.classList.add('modal-enter-content');
+          }
+        } catch (e) {
+          alert('加载剧集失败：' + e.message);
+        }
+      }
+
+      function renderSeriesSeasons() {
+        const box = document.getElementById('series-seasons');
+        if (!seriesModalState.seasons.length) {
+          box.innerHTML = '<span class="text-xs text-gray-400 px-2">单季/未识别</span>';
+          return;
+        }
+        box.innerHTML = seriesModalState.seasons.map(s => `
+          <button data-season="${s}" class="px-3.5 py-1 rounded-xl text-xs font-semibold transition ${
+            seriesModalState.season === s
+              ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300'
+              : 'bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-500/30 hover:text-cyan-300'
+          }">第 ${s} 季</button>
+        `).join('');
+      }
+
+      function renderSeriesEpisodes() {
+        const grid = document.getElementById('series-episodes-grid');
+        const list = seriesModalState.season
+          ? seriesModalState.episodes.filter(ep => ep.season === seriesModalState.season)
+          : seriesModalState.episodes;
+        document.getElementById('series-episodes-count').innerText = `共 ${list.length} 集`;
+
+        if (!list.length) {
+          grid.innerHTML = '<div class="col-span-full py-8 text-center text-gray-500 text-xs">没有分集记录</div>';
+          return;
+        }
+
+        grid.innerHTML = list.map(ep => `
+          <button data-episode="${ep.id}" data-episode-num="${ep.episode || ''}"
+            title="${esc(ep.file_name || ep.title)}"
+            class="py-2.5 px-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-300 border border-white/10 hover:border-cyan-500/40 text-xs text-gray-200 transition font-mono flex flex-col items-center justify-center gap-0.5 group focus:border-cyan-500">
+            <span class="font-bold">${ep.episode ? 'E' + String(ep.episode).padStart(2, '0') : (ep.episode_label || 'E--')}</span>
+            <span class="text-[9px] text-gray-500 group-hover:text-cyan-400/80">${ep.file_size ? fmtSize(ep.file_size) : ''}</span>
+          </button>
+        `).join('');
+        safeCreateIcons();
+      }
+
+      function hoverEpisode(epId) {
+        const ep = seriesModalState.episodes.find(x => x.id === Number(epId));
+        if (!ep) return;
+        document.getElementById('ep-hover-num').innerText = ep.episode ? 'E' + String(ep.episode).padStart(2, '0') : 'E--';
+        document.getElementById('ep-hover-title').innerText = ep.file_name || (ep.series_title || '') + (ep.episode ? ' 第' + ep.episode + '集' : '');
+        document.getElementById('ep-hover-meta').innerText = [ep.year, ep.file_size ? fmtSize(ep.file_size) : ''].filter(Boolean).join(' • ');
+        document.getElementById('ep-hover-desc').innerText = ep.overview || '暂无单集简介';
+        document.getElementById('ep-hover-play-btn').dataset.episode = ep.id;
+      }
+
+      function resetHoverEpisode() {
+        document.getElementById('ep-hover-num').innerText = 'E--';
+        document.getElementById('ep-hover-title').innerText = '悬浮到某一集查看';
+        document.getElementById('ep-hover-meta').innerText = '';
+        document.getElementById('ep-hover-desc').innerText = '暂无简介';
+        delete document.getElementById('ep-hover-play-btn').dataset.episode;
+      }
+
+      document.getElementById('series-episodes-grid').addEventListener('mouseover', (e) => {
+        const btn = e.target.closest('[data-episode]');
+        if (btn) hoverEpisode(btn.dataset.episode);
+      });
+      document.getElementById('series-episodes-grid').addEventListener('mouseleave', resetHoverEpisode);
+      document.getElementById('ep-hover-play-btn').addEventListener('click', () => {
+        const id = document.getElementById('ep-hover-play-btn').dataset.episode;
+        const ep = seriesModalState.episodes.find(x => x.id === Number(id));
+
+          /*
+        document.getElementById('series-seasons').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-season]');
+          if (!btn || !seriesModalState.episodes.length) return;
+          const first = seriesModalState.episodes[0] || {};
+          const baseTitle = first.series_title || first.title || '剧集';
+          const activeSeason = seriesModalState.season;
+          document.getElementById('series-modal-title').innerText = activeSeason ? `${baseTitle} 第${activeSeason}季` : baseTitle;
+        });
+          */
+
+        if (ep) { closeSeriesModal(); playItem(ep); }
+      });
+
+        // 切换季度后同步更新顶部标题
+        document.getElementById('series-seasons').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-season]');
+          if (!btn || !seriesModalState.episodes.length) return;
+          const first = seriesModalState.episodes[0] || {};
+          const baseTitle = first.series_title || first.title || '剧集';
+          const activeSeason = seriesModalState.season;
+          document.getElementById('series-modal-title').innerText = activeSeason ? `${baseTitle} 第${activeSeason}季` : baseTitle;
+        });
+
+        function renderSeriesModalDetail() {
+          const season = seriesModalState.season;
+          const eps = season
+            ? seriesModalState.episodes.filter(ep => ep.season === season)
+            : seriesModalState.episodes;
+          const first = eps[0] || seriesModalState.episodes[0] || {};
+          const baseTitle = first.series_title || first.title || '剧集';
+          const activeSeason = season || null;
+
+          document.getElementById('series-modal-title').innerText = activeSeason ? `${baseTitle} 第${activeSeason}季` : baseTitle;
+          document.getElementById('series-modal-rating').innerText = (first.rating != null ? '★ ' + first.rating : '★ --');
+          document.getElementById('series-modal-year').innerText = first.year || '----';
+          document.getElementById('series-modal-cover').src = first.cover || 'https://placehold.co/400x600/0f172a/06b6d4?text=ATOM';
+          document.getElementById('series-modal-status').innerText = first.status === 'scraped' ? '已刮削' : (first.status || 'TV');
+          document.getElementById('series-modal-overview').innerText = first.overview || '暂无简介';
+          const genres = first.genres || [];
+          document.getElementById('series-modal-genres').innerHTML = genres.length
+            ? genres.map(g => `<span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px]">${esc(g)}</span>`).join('')
+            : '<span class="text-xs text-gray-500">未知</span>';
+          document.getElementById('series-modal-episode-info').innerText = `第${activeSeason || 1}季共 ${eps.length} 集`;
+          document.getElementById('series-modal-quality').innerText = first.file_name || '分集管理';
+        }
+
+        // 切换季度：刷新详情并播放过渡动画
+        document.getElementById('series-seasons').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-season]');
+          if (!btn) return;
+          renderSeriesModalDetail();
+          const detail = document.getElementById('series-modal-detail');
+          if (detail) {
+            detail.classList.remove('series-detail-animate');
+            void detail.offsetWidth;
+            detail.classList.add('series-detail-animate');
+          }
+        });
 
 
     /* ---------- 播放器 Modal（原版保留） ---------- */
